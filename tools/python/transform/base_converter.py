@@ -128,6 +128,7 @@ MaceSupportedOps = [
     'FullyConnected',
     'Gather',
     'GroupNorm',
+    'GroupConv2d',
     'Identity',
     'IfDefined',
     'InferConv2dShape',
