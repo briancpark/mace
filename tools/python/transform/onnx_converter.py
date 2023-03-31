@@ -935,9 +935,10 @@ class OnnxConverter(base_converter.ConverterInterface):
                 filter_shape = self._graph_shapes_dict[node.inputs[1]]
             else:
                 filter_shape = self._consts[node.inputs[1]].dims
-            mace_check(group_val == filter_shape[0] and
-                       filter_shape[1] == 1,
-                       "Mace does not support group convolution yet")
+            if group_val != filter_shape[0] and filter_shape[1] != 1:
+                # Adding support for grouped convolution:
+                op.type = MaceOp.GroupConv2d.name
+                return
             filter_tensor = self._consts[node.inputs[1]]
             new_shape = [filter_shape[1], filter_shape[0],
                          filter_shape[2], filter_shape[3]]
