@@ -470,6 +470,11 @@ class DeviceWrapper:
                 "--apu_boost_hint=%s" % apu_boost_hint,
                 "--apu_preference_hint=%s" % apu_preference_hint,
             ])
+            # Sometimes, device names have paretheses in them, which causes
+            # command to fail because of shell interpretation. So we need to
+            # escape them.
+            for i in range(len(cmd)):
+                cmd[i] = cmd[i].replace('(', '\(').replace(')', '\)')
             if benchmark:
                 cmd.append("--benchmark=%s" % benchmark)
             if fake_warmup:
