@@ -930,6 +930,7 @@ class OnnxConverter(base_converter.ConverterInterface):
         group_arg.i = group_val
 
         is_depthwise = False
+        is_group = False
         if group_val > 1:
             if node.inputs[1] in self._graph_shapes_dict:
                 filter_shape = self._graph_shapes_dict[node.inputs[1]]
@@ -938,17 +939,18 @@ class OnnxConverter(base_converter.ConverterInterface):
             if group_val != filter_shape[0] and filter_shape[1] != 1:
                 # Adding support for grouped convolution:
                 op.type = MaceOp.GroupConv2d.name
-                return
+                is_group = True
             filter_tensor = self._consts[node.inputs[1]]
             new_shape = [filter_shape[1], filter_shape[0],
                          filter_shape[2], filter_shape[3]]
             del filter_tensor.dims[:]
             filter_tensor.dims.extend(new_shape)
             is_depthwise = True
-        if is_depthwise:
-            op.type = MaceOp.DepthwiseConv2d.name
-        else:
-            op.type = MaceOp.Conv2D.name
+        if not is_group:
+            if is_depthwise:
+                op.type = MaceOp.DepthwiseConv2d.name
+            else:
+                op.type = MaceOp.Conv2D.name
 
         dilation_arg = op.arg.add()
         dilation_arg.name = MaceKeyword.mace_dilations_str
