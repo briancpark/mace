@@ -35,26 +35,66 @@ class GroupConv2dOpBase : public Operation {
         padding_type_(static_cast<Padding>(
             Operation::GetOptionalArg<int>("padding", static_cast<int>(SAME)))),
         paddings_(Operation::GetRepeatedArgs<int>("padding_values")),
-        group_(Operation::GetOptionalArg<int>("group", 1)),
-        model_type_(static_cast<FrameworkType>(
-            Operation::GetOptionalArg<int>("framework_type", 0))),
-        activation_(ops::StringToActivationType(
-            Operation::GetOptionalArg<std::string>("activation", "NOOP"))),
-        relux_max_limit_(Operation::GetOptionalArg<float>("max_limit", 0.0f)),
-        activation_coefficient_(
-            Operation::GetOptionalArg<float>("activation_coefficient", 0.0f)) {}
+        group_(Operation::GetOptionalArg<int>("group", 1)) {}
 
  protected:
   std::vector<int> strides_;  // [stride_h, stride_w]
-  const Padding padding_type_;
+  Padding padding_type_;
   std::vector<int> paddings_;
   std::vector<int> dilations_;
-  const int group_;
-  const FrameworkType model_type_;
-  const ActivationType activation_;
-  const float relux_max_limit_;
-  const float activation_coefficient_;
+  int group_;
 };
+
+
+// This is the naive group conv2d implementation, used for reference
+template <typename T>
+void naive_group_conv2d(const T *input,
+                        const T *filter,
+                        const index_t *in_shape,
+                        const index_t *filter_shape,
+                        const index_t *out_shape,
+                        const std::vector<int> &strides,
+                        const std::vector<int> &paddings,
+                        const int group,
+                        T *output) {
+  for (index_t b = 0; b < out_shape[0]; ++b) {
+    for (index_t g = 0; g < group; ++g) {
+      for (index_t oc = 0; oc < out_shape[1] / group; ++oc) {
+        for (index_t oh = 0; oh < out_shape[2]; ++oh) {
+          for (index_t ow = 0; ow < out_shape[3]; ++ow) {
+            index_t out_idx =
+                b * out_shape[1] * out_shape[2] * out_shape[3] +
+                g * out_shape[1] / group * out_shape[2] * out_shape[3] +
+                oc * out_shape[2] * out_shape[3] + oh * out_shape[3] + ow;
+            T sum = 0;
+            for (index_t ic = 0; ic < in_shape[1] / group; ++ic) {
+              for (index_t kh = 0; kh < filter_shape[2]; ++kh) {
+                for (index_t kw = 0; kw < filter_shape[3]; ++kw) {
+                  index_t ih = oh * strides[0] - paddings[0] + kh;
+                  index_t iw = ow * strides[1] - paddings[1] + kw;
+                  if (ih >= 0 && ih < in_shape[2] && iw >= 0 &&
+                      iw < in_shape[3]) {
+                    index_t in_idx =
+                        b * in_shape[1] * in_shape[2] * in_shape[3] +
+                        g * in_shape[1] / group * in_shape[2] * in_shape[3] +
+                        ic * in_shape[2] * in_shape[3] + ih * in_shape[3] + iw;
+                    index_t filter_idx =
+                        g * filter_shape[1] / group * filter_shape[2] *
+                            filter_shape[3] +
+                        oc * filter_shape[2] * filter_shape[3] +
+                        kh * filter_shape[3] + kw;
+                    sum += input[in_idx] * filter[filter_idx];
+                  }
+                }
+              }
+            }
+            output[out_idx] = sum;
+          }
+        }
+      }
+    }
+  }
+}
 
 }  // namespace ops
 }  // namespace mace

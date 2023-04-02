@@ -33,6 +33,7 @@
 #include "mace/ops/delegator/activation.h"
 #include "mace/ops/delegator/bias_add.h"
 #include "mace/ops/delegator/conv_2d.h"
+#include "mace/ops/delegator/group_conv2d.h"
 #include "mace/ops/group_conv2d.h"
 #include "mace/utils/math.h"
 #include "mace/utils/memory.h"
@@ -68,85 +69,134 @@ class GroupConv2d<RuntimeType::RT_CPU, T> : public GroupConv2dOpBase {
             DelegatorParam())) {}
 
   MaceStatus Run(OpContext *context) override {
+    MACE_UNUSED(context);
+    // printf("BEGIN RUNNING GroupConv2d\n");
     const Tensor *input = this->Input(INPUT);
     const Tensor *filter = this->Input(FILTER);
     const Tensor *bias = this->InputSize() >= 3 ? this->Input(BIAS) : nullptr;
     Tensor *output = this->Output(OUTPUT);
 
-    if (conv2d_delegator_ == nullptr) {
-      auto tag =
-          MACE_DELEGATOR_KEY(Conv2d, RuntimeType::RT_CPU, T, kCpuImplType);
-      if (kCpuImplType == NEON) {
-        // the following params are used to decide which conv delegator to use
-        const index_t stride_h = strides_[0];
-        const index_t stride_w = strides_[1];
-        const index_t dilation_h = dilations_[0];
-        const index_t dilation_w = dilations_[1];
-        const index_t filter_h = filter->dim(2);
-        const index_t filter_w = filter->dim(3);
-        const index_t input_channels = input->dim(1);
-        const index_t channels = filter->dim(0);
-        // NOTE: delegator is fixed after first round of running,
-        // although winograd depends on input params.
-        // We do not support changeable filter for now.
-        if (filter_h == 1 && filter_w == 1 && stride_h == 1 && stride_w == 1 &&
-            dilation_h == 1 && dilation_w == 1) {
-          tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
-                                      kCpuImplType, K1x1);
-        } else if (filter_h == 3 && filter_w == 3 && stride_h == 1 &&
-                   stride_w == 1 && dilation_h == 1 && dilation_w == 1) {
-          if (input_channels >= 8 && channels >= 8) {
-            tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
-                                        kCpuImplType, K3x3Winograd);
-          } else {
-            tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
-                                        kCpuImplType, K3x3S1);
-          }
-        } else if (filter_h == 3 && filter_w == 3 && stride_h == 2 &&
-                   stride_w == 2 && dilation_h == 1 && dilation_w == 1) {
-          tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
-                                      kCpuImplType, K3x3S2);
-        } else if (filter_h == 5 && filter_w == 5 && stride_h == 1 &&
-                   stride_w == 1 && dilation_h == 1 && dilation_w == 1) {
-          tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
-                                      kCpuImplType, K5x5S1);
-        } else if (filter_h == 7 && filter_w == 7 && stride_h == 1 &&
-                   stride_w == 1 && dilation_h == 1 && dilation_w == 1) {
-          tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
-                                      kCpuImplType, K7x7S1);
-        } else if (filter_h == 7 && filter_w == 7 && stride_h == 2 &&
-                   stride_w == 2 && dilation_h == 1 && dilation_w == 1) {
-          tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
-                                      kCpuImplType, K7x7S2);
-        } else if (filter_h == 7 && filter_w == 7 && stride_h == 3 &&
-                   stride_w == 3 && dilation_h == 1 && dilation_w == 1) {
-          tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
-                                      kCpuImplType, K7x7S3);
-        } else if (filter_h == 1 && filter_w == 7 && stride_h == 1 &&
-                   stride_w == 1 && dilation_h == 1 && dilation_w == 1) {
-          tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
-                                      kCpuImplType, K1x7S1);
-        } else if (filter_h == 7 && filter_w == 1 && stride_h == 1 &&
-                   stride_w == 1 && dilation_h == 1 && dilation_w == 1) {
-          tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
-                                      kCpuImplType, K7x1S1);
-        } else if (filter_h == 1 && filter_w == 15 && stride_h == 1 &&
-                   stride_w == 1 && dilation_h == 1 && dilation_w == 1) {
-          tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
-                                      kCpuImplType, K1x15S1);
-        } else if (filter_h == 15 && filter_w == 1 && stride_h == 1 &&
-                   stride_w == 1 && dilation_h == 1 && dilation_w == 1) {
-          tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
-                                      kCpuImplType, K15x1S1);
-        }
-      }
-      delegator::Conv2dParam param(strides_, dilations_, paddings_,
-                                   padding_type_);
-      conv2d_delegator_ =
-          delegator::Conv2d::Create(context->workspace(), tag, param);
-    }
+    // TODO: (bcp) DEBUGGING
 
-    conv2d_delegator_->Compute(context, input, filter, output);
+    // Print the input, filter, bias, and output shapes
+    // printf("input shape: %lu %lu %lu %lu\n", input->dim(0), input->dim(1),
+    //        input->dim(2), input->dim(3));
+    // printf("filter shape: %lu %lu %lu %lu\n", filter->dim(0), filter->dim(1),
+    //        filter->dim(2), filter->dim(3));
+    // printf("bias shape: %lu\n", bias->dim(0));
+    // printf("output shape: %lu %lu %lu %lu\n", output->dim(0), output->dim(1),
+    //        output->dim(2), output->dim(3));
+
+    // Print the format of the input, filter, bias, and output
+
+
+    // print out the group size
+    VLOG(3) << "group size: " << group_;
+
+    // if (group_conv2d_delegator_ == nullptr) {
+    //   VLOG(3) << "Creating group conv2d delegator";
+    //   auto tag =
+    //       MACE_DELEGATOR_KEY(GroupConv2d, RuntimeType::RT_CPU, T,
+    //       kCpuImplType);
+
+    // } else {
+    //   VLOG(3) << "Reusing group conv2d delegator";
+    // }
+
+    // This is the function signature:
+    // void naive_group_conv2d(const T *input,
+    //                     const T *filter,
+    //                     const index_t *in_shape,
+    //                     const index_t *filter_shape,
+    //                     const index_t *out_shape,
+    //                     const std::vector<int> &strides,
+    //                     const std::vector<int> &paddings,
+    //                     const int group,
+    //                     T *output)
+
+    naive_group_conv2d(input->data<T>(), filter->data<T>(),
+                       input->shape().data(), filter->shape().data(),
+                       output->shape().data(), strides_, paddings_, group_,
+                       output->mutable_data<T>());
+
+    // if (conv2d_delegator_ == nullptr) {
+    //   auto tag =
+    //       MACE_DELEGATOR_KEY(Conv2d, RuntimeType::RT_CPU, T,
+    //       kCpuImplType);
+    //   if (kCpuImplType == NEON) {
+    //     // the following params are used to decide which conv delegator
+    //     to use const index_t stride_h = strides_[0]; const index_t
+    //     stride_w = strides_[1]; const index_t dilation_h = dilations_[0];
+    //     const index_t dilation_w = dilations_[1]; const index_t filter_h
+    //     = filter->dim(2); const index_t filter_w = filter->dim(3); const
+    //     index_t input_channels = input->dim(1); const index_t channels =
+    //     filter->dim(0);
+    //     // NOTE: delegator is fixed after first round of running,
+    //     // although winograd depends on input params.
+    //     // We do not support changeable filter for now.
+    //     if (filter_h == 1 && filter_w == 1 && stride_h == 1 && stride_w
+    //     == 1
+    //     &&
+    //         dilation_h == 1 && dilation_w == 1) {
+    //       tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
+    //                                   kCpuImplType, K1x1);
+    //     } else if (filter_h == 3 && filter_w == 3 && stride_h == 1 &&
+    //                stride_w == 1 && dilation_h == 1 && dilation_w == 1) {
+    //       if (input_channels >= 8 && channels >= 8) {
+    //         tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
+    //                                     kCpuImplType, K3x3Winograd);
+    //       } else {
+    //         tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
+    //                                     kCpuImplType, K3x3S1);
+    //       }
+    //     } else if (filter_h == 3 && filter_w == 3 && stride_h == 2 &&
+    //                stride_w == 2 && dilation_h == 1 && dilation_w == 1) {
+    //       tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
+    //                                   kCpuImplType, K3x3S2);
+    //     } else if (filter_h == 5 && filter_w == 5 && stride_h == 1 &&
+    //                stride_w == 1 && dilation_h == 1 && dilation_w == 1) {
+    //       tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
+    //                                   kCpuImplType, K5x5S1);
+    //     } else if (filter_h == 7 && filter_w == 7 && stride_h == 1 &&
+    //                stride_w == 1 && dilation_h == 1 && dilation_w == 1) {
+    //       tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
+    //                                   kCpuImplType, K7x7S1);
+    //     } else if (filter_h == 7 && filter_w == 7 && stride_h == 2 &&
+    //                stride_w == 2 && dilation_h == 1 && dilation_w == 1) {
+    //       tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
+    //                                   kCpuImplType, K7x7S2);
+    //     } else if (filter_h == 7 && filter_w == 7 && stride_h == 3 &&
+    //                stride_w == 3 && dilation_h == 1 && dilation_w == 1) {
+    //       tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
+    //                                   kCpuImplType, K7x7S3);
+    //     } else if (filter_h == 1 && filter_w == 7 && stride_h == 1 &&
+    //                stride_w == 1 && dilation_h == 1 && dilation_w == 1) {
+    //       tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
+    //                                   kCpuImplType, K1x7S1);
+    //     } else if (filter_h == 7 && filter_w == 1 && stride_h == 1 &&
+    //                stride_w == 1 && dilation_h == 1 && dilation_w == 1) {
+    //       tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
+    //                                   kCpuImplType, K7x1S1);
+    //     } else if (filter_h == 1 && filter_w == 15 && stride_h == 1 &&
+    //                stride_w == 1 && dilation_h == 1 && dilation_w == 1) {
+    //       tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
+    //                                   kCpuImplType, K1x15S1);
+    //     } else if (filter_h == 15 && filter_w == 1 && stride_h == 1 &&
+    //                stride_w == 1 && dilation_h == 1 && dilation_w == 1) {
+    //       tag = MACE_DELEGATOR_KEY_EX(Conv2d, RuntimeType::RT_CPU, T,
+    //                                   kCpuImplType, K15x1S1);
+    //     }
+    //   }
+    // This is a temporary tag for now:
+    // auto tag = MACE_DELEGATOR_KEY_EX(GroupConv2d, RuntimeType::RT_CPU, T,
+    //                                  kCpuImplType, K3x3Winograd);
+
+    delegator::GroupConv2dParam param(strides_, dilations_, paddings_,
+                                      padding_type_, group_);
+    // group_conv2d_delegator_ =
+    //     delegator::GroupConv2d::Create(context->workspace(), tag, param);
+    // }
+    // group_conv2d_delegator_->Compute(context, input, filter, output);
     bias_add_delegator_->Compute(context, output, bias, output);
     activation_delegator_->Compute(context, output, output);
 
@@ -157,7 +207,7 @@ class GroupConv2d<RuntimeType::RT_CPU, T> : public GroupConv2dOpBase {
  private:
   std::unique_ptr<delegator::Activation> activation_delegator_;
   std::unique_ptr<delegator::BiasAdd> bias_add_delegator_;
-  std::unique_ptr<delegator::Conv2d> conv2d_delegator_;
+  std::unique_ptr<delegator::GroupConv2d> group_conv2d_delegator_;
 
  private:
   MACE_OP_INPUT_TAGS(INPUT, FILTER, BIAS);
