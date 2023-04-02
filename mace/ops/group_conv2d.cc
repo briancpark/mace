@@ -38,6 +38,13 @@
 #include "mace/utils/math.h"
 #include "mace/utils/memory.h"
 
+#ifdef MACE_ENABLE_OPENCL
+#include "mace/ops/opencl/buffer/group_conv2d.h"
+#include "mace/ops/opencl/image/group_conv2d.h"
+#include "mace/runtimes/opencl/opencl_runtime.h"
+#include "mace/runtimes/opencl/transform/buffer_transformer.h"
+#endif  // MACE_ENABLE_OPENCL
+
 namespace mace {
 namespace ops {
 
@@ -214,16 +221,119 @@ class GroupConv2d<RuntimeType::RT_CPU, T> : public GroupConv2dOpBase {
   MACE_OP_OUTPUT_TAGS(OUTPUT);
 };
 
-// #ifdef MACE_ENABLE_OPENCL
-// template <>
-// class GroupConv2d<RuntimeType::RT_OPENCL, float> : public Operation {};
-// #endif  // MACE_ENABLE_OPENCL
+#ifdef MACE_ENABLE_OPENCL
+template <>
+class GroupConv2d<RuntimeType::RT_OPENCL, float> : public GroupConv2dOpBase {
+ public:
+  explicit GroupConv2d(OpConstructContext *context)
+      : GroupConv2dOpBase(context),
+        activation_(ops::StringToActivationType(
+            Operation::GetOptionalArg<std::string>("activation", "NOOP"))),
+        relux_max_limit_(Operation::GetOptionalArg<float>("max_limit", 0.0f)),
+        activation_coefficient_(
+            Operation::GetOptionalArg<float>("activation_coefficient", 0.0f)),
+        wino_block_size_(Operation::GetOptionalArg<int>("wino_block_size", 0)) {
+    MemoryType mem_type;
+    if (context->GetOpMemoryType() == MemoryType::GPU_IMAGE) {
+      mem_type = MemoryType::GPU_IMAGE;
+      kernel_ = make_unique<opencl::image::Conv2dKernel>();
+    } else {
+      mem_type = MemoryType::GPU_BUFFER;
+      kernel_ = make_unique<opencl::buffer::Conv2dKernel>();
+    }
+    // Transform input tensor to target format
+    auto *input_tensor =
+        context->workspace()->GetTensor(operator_def_->input(INPUT));
+    if (input_tensor != nullptr && input_tensor->is_weight()) {
+      MACE_CHECK(TransformFilter(context, operator_def_.get(), 0,
+                                 BufferContentType::IN_OUT_CHANNEL,
+                                 mem_type) == MaceStatus::MACE_SUCCESS);
+    }
+    // Transform filter tensor to target format
+    auto *filter_tensor =
+        context->workspace()->GetTensor(operator_def_->input(FILTER));
+    if (filter_tensor != nullptr && filter_tensor->is_weight()) {
+      if ((wino_block_size_ == 2 || wino_block_size_ == 4) &&
+          (kernel_->CheckUseWinograd(
+              OpenclRuntime::Get(context)->GetOpenclExecutor(),
+              filter_tensor->shape(),
+              std::vector<index_t>(
+                  operator_def_->output_shape(0).dims().begin(),
+                  operator_def_->output_shape(0).dims().end()),
+              strides_.data(), dilations_.data(), &wino_block_size_))) {
+        MACE_CHECK(TransformFilter(context, operator_def_.get(), 1,
+                                   BufferContentType::WINOGRAD_FILTER, mem_type,
+                                   wino_block_size_) ==
+                   MaceStatus::MACE_SUCCESS);
+      } else {
+        wino_block_size_ = 0;
+        MACE_CHECK(TransformFilter(context, operator_def_.get(), 1,
+                                   BufferContentType::CONV2D_FILTER,
+                                   mem_type) == MaceStatus::MACE_SUCCESS);
+      }
+    } else {
+      // we don't know whether the kernal support winograd, so disable it.
+      wino_block_size_ = 0;
+    }
+
+    if (operator_def_->input_size() > 2) {
+      auto ret = TransformFilter(context, operator_def_.get(), 2,
+                                 BufferContentType::ARGUMENT, mem_type);
+      MACE_CHECK(ret == MaceStatus::MACE_SUCCESS);
+    }
+  }
+
+  MaceStatus Run(OpContext *context) override {
+    const Tensor *input = this->Input(INPUT);
+    const Tensor *filter = this->Input(FILTER);
+    const Tensor *bias = this->InputSize() >= 3 ? this->Input(BIAS) : nullptr;
+    Tensor *output = this->Output(OUTPUT);
+    return kernel_->Compute(context, input, filter, bias, strides_.data(),
+                            padding_type_, paddings_, dilations_.data(),
+                            activation_, relux_max_limit_,
+                            activation_coefficient_, wino_block_size_, output);
+  }
+
+ protected:
+  BufferContentType GetInputTensorContentType(size_t idx) const override {
+    if (idx == FILTER) {
+      if (wino_block_size_ == 0) {
+        return BufferContentType::CONV2D_FILTER;
+      } else {
+        return BufferContentType::WINOGRAD_FILTER;
+      }
+    }
+    return Operation::GetInputTensorContentType(idx);
+  }
+
+ private:
+  const ActivationType activation_;
+  const float relux_max_limit_;
+  const float activation_coefficient_;
+  std::unique_ptr<OpenCLConv2dKernel> kernel_;
+  int wino_block_size_;
+
+ private:
+  MACE_OP_INPUT_TAGS(INPUT, FILTER, BIAS);
+  MACE_OP_OUTPUT_TAGS(OUTPUT);
+};
+#endif  // MACE_ENABLE_OPENCL
 
 void RegisterGroupConv2d(OpRegistry *op_registry) {
   MACE_REGISTER_OP(op_registry, "GroupConv2d", GroupConv2d, RuntimeType::RT_CPU,
                    float);
 
-  //   MACE_REGISTER_GPU_OP(op_registry, "GroupConv2d", GroupConv2d);
+  MACE_REGISTER_GPU_OP(op_registry, "GroupConv2d", GroupConv2d);
+
+  // #ifdef MACE_ENABLE_OPENCL
+  //   MACE_REGISTER_OP_CONDITION(
+  //       op_registry,
+  //       OpConditionBuilder("GroupConv2D")
+  //           .SetInputMemoryTypeSetter([](OpConditionContext *context) -> void
+  //           {
+  //             SetFilterMemoryType(context, BufferContentType::CONV2D_FILTER);
+  //           }));
+  // #endif  // MACE_ENABLE_OPENCL
 
   RegisterFilterDataFormat(op_registry, "GroupConv2d");
 }
