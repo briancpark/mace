@@ -32,7 +32,7 @@
 #include "mace/ops/conv_pool_2d_base.h"
 #include "mace/ops/delegator/activation.h"
 #include "mace/ops/delegator/bias_add.h"
-#include "mace/ops/delegator/conv_2d.h"
+// #include "mace/ops/delegator/conv_2d.h"
 #include "mace/ops/delegator/group_conv2d.h"
 #include "mace/ops/group_conv2d.h"
 #include "mace/utils/math.h"
@@ -195,15 +195,14 @@ class GroupConv2d<RuntimeType::RT_CPU, T> : public GroupConv2dOpBase {
     //     }
     //   }
     // This is a temporary tag for now:
-    // auto tag = MACE_DELEGATOR_KEY_EX(GroupConv2d, RuntimeType::RT_CPU, T,
-    //                                  kCpuImplType, K3x3Winograd);
+    auto tag = MACE_DELEGATOR_KEY_EX(GroupConv2d, RuntimeType::RT_CPU, T,
+                                     kCpuImplType, K3x3Winograd);
 
     delegator::GroupConv2dParam param(strides_, dilations_, paddings_,
                                       padding_type_, group_);
-    // group_conv2d_delegator_ =
-    //     delegator::GroupConv2d::Create(context->workspace(), tag, param);
-    // }
-    // group_conv2d_delegator_->Compute(context, input, filter, output);
+    group_conv2d_delegator_ =
+        delegator::GroupConv2d::Create(context->workspace(), tag, param);
+    group_conv2d_delegator_->Compute(context, input, filter, output);
     bias_add_delegator_->Compute(context, output, bias, output);
     activation_delegator_->Compute(context, output, output);
 
@@ -236,10 +235,14 @@ class GroupConv2d<RuntimeType::RT_OPENCL, float> : public GroupConv2dOpBase {
     MemoryType mem_type;
     if (context->GetOpMemoryType() == MemoryType::GPU_IMAGE) {
       mem_type = MemoryType::GPU_IMAGE;
-      kernel_ = make_unique<opencl::image::Conv2dKernel>();
+      // TODO: support group conv2d with image
+      VLOG(1) << "IMAGEBUFF";
+      kernel_ = make_unique<opencl::image::GroupConv2dKernel>();
     } else {
+      VLOG(1) << "IMAGEBUFFBUFF";
       mem_type = MemoryType::GPU_BUFFER;
-      kernel_ = make_unique<opencl::buffer::Conv2dKernel>();
+      kernel_ = make_unique<opencl::image::GroupConv2dKernel>();
+      //   kernel_ = make_unique<opencl::buffer::GroupConv2dKernel>();
     }
     // Transform input tensor to target format
     auto *input_tensor =
@@ -281,17 +284,26 @@ class GroupConv2d<RuntimeType::RT_OPENCL, float> : public GroupConv2dOpBase {
                                  BufferContentType::ARGUMENT, mem_type);
       MACE_CHECK(ret == MaceStatus::MACE_SUCCESS);
     }
+    VLOG(1) << "GCONV INIT DONE";
   }
 
   MaceStatus Run(OpContext *context) override {
+    VLOG(1) << "RUNNING GPU GCONV";
     const Tensor *input = this->Input(INPUT);
     const Tensor *filter = this->Input(FILTER);
     const Tensor *bias = this->InputSize() >= 3 ? this->Input(BIAS) : nullptr;
     Tensor *output = this->Output(OUTPUT);
-    return kernel_->Compute(context, input, filter, bias, strides_.data(),
-                            padding_type_, paddings_, dilations_.data(),
-                            activation_, relux_max_limit_,
-                            activation_coefficient_, wino_block_size_, output);
+    // Print out the contents of the padding
+    // printout the size of the paddings
+    VLOG(1) << "Paddings size is " << paddings_.size();
+    for (int i = 0; i < 2; i++) {
+      VLOG(1) << "Padding " << i << " is " << paddings_[i];
+    }
+    VLOG(1) << "RUNNING GPU GCONV INIT";
+    return kernel_->Compute(
+        context, input, filter, bias, strides_.data(), padding_type_, paddings_,
+        dilations_.data(), activation_, relux_max_limit_,
+        activation_coefficient_, wino_block_size_, group_, output);
   }
 
  protected:
@@ -310,7 +322,7 @@ class GroupConv2d<RuntimeType::RT_OPENCL, float> : public GroupConv2dOpBase {
   const ActivationType activation_;
   const float relux_max_limit_;
   const float activation_coefficient_;
-  std::unique_ptr<OpenCLConv2dKernel> kernel_;
+  std::unique_ptr<OpenCLGroupConv2dKernel> kernel_;
   int wino_block_size_;
 
  private:
@@ -325,17 +337,18 @@ void RegisterGroupConv2d(OpRegistry *op_registry) {
 
   MACE_REGISTER_GPU_OP(op_registry, "GroupConv2d", GroupConv2d);
 
-  // #ifdef MACE_ENABLE_OPENCL
-  //   MACE_REGISTER_OP_CONDITION(
-  //       op_registry,
-  //       OpConditionBuilder("GroupConv2D")
-  //           .SetInputMemoryTypeSetter([](OpConditionContext *context) -> void
-  //           {
-  //             SetFilterMemoryType(context, BufferContentType::CONV2D_FILTER);
-  //           }));
-  // #endif  // MACE_ENABLE_OPENCL
-
+#ifdef MACE_ENABLE_OPENCL
+  MACE_REGISTER_OP_CONDITION(
+      op_registry,
+      OpConditionBuilder("GroupConv2D")
+          .SetInputMemoryTypeSetter([](OpConditionContext *context) -> void {
+            SetFilterMemoryType(context, BufferContentType::CONV2D_FILTER);
+          }));
+  VLOG(3) << "SUCCESSFULLY REGISTERED GPU GCONV";
+#endif  // MACE_ENABLE_OPENCL
+  VLOG(3) << "REGISTERED GPU GCONV";
   RegisterFilterDataFormat(op_registry, "GroupConv2d");
+  VLOG(3) << "REGISTERED GPU GCONV FILTER";
 }
 
 }  // namespace ops

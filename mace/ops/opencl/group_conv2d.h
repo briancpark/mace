@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef MACE_OPS_OPENCL_CONV_2D_H_
-#define MACE_OPS_OPENCL_CONV_2D_H_
+#ifndef MACE_OPS_OPENCL_GROUP_CONV2D_H_
+#define MACE_OPS_OPENCL_GROUP_CONV2D_H_
 
 #include <vector>
 
@@ -25,7 +25,7 @@ namespace mace {
 class OpContext;
 
 namespace ops {
-class OpenCLConv2dKernel {
+class OpenCLGroupConv2dKernel {
  public:
   virtual bool CheckUseWinograd(OpenclExecutor *executor,
                                 const std::vector<index_t> &filter_shape,
@@ -46,11 +46,12 @@ class OpenCLConv2dKernel {
                              const float relux_max_limit,
                              const float activation_coefficient,
                              const int winograd_blk_size,
+                             const int groups,
                              Tensor *output) = 0;
-  MACE_EMPTY_VIRTUAL_DESTRUCTOR(OpenCLConv2dKernel);
+  MACE_EMPTY_VIRTUAL_DESTRUCTOR(OpenCLGroupConv2dKernel);
 };
 
 }  // namespace ops
 }  // namespace mace
 
-#endif  // MACE_OPS_OPENCL_CONV_2D_H_
+#endif  // MACE_OPS_OPENCL_GROUP_CONV2D_H_

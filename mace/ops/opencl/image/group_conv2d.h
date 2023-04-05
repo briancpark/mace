@@ -19,7 +19,7 @@
 
 #include "mace/core/ops/op_context.h"
 #include "mace/core/tensor.h"
-#include "mace/ops/opencl/conv_2d.h"
+#include "mace/ops/opencl/group_conv2d.h"
 #include "mace/runtimes/opencl/core/opencl_helper.h"
 
 namespace mace {
@@ -27,70 +27,27 @@ namespace ops {
 namespace opencl {
 namespace image {
 
-extern MaceStatus Conv2dK1x1(OpContext *context,
-                             cl::Kernel *kernel,
-                             const Tensor *input,
-                             const Tensor *filter,
-                             const Tensor *bias,
-                             const int stride_h,
-                             const int stride_w,
-                             const int *padding,
-                             const int *dilations,
-                             const ActivationType activation,
-                             const float relux_max_limit,
-                             const float activation_coefficient,
-                             std::vector<index_t> *prev_input_shape,
-                             Tensor *output,
-                             uint32_t *kwg_size);
+extern MaceStatus GroupConv2d(OpContext *context,
+                              cl::Kernel *kernel,
+                              const Tensor *input,
+                              const Tensor *filter,
+                              const Tensor *bias,
+                              const int stride_h,
+                              const int stride_w,
+                              const int *padding,
+                              const int *dilations,
+                              const ActivationType activation,
+                              const float relux_max_limit,
+                              const float activation_coefficient,
+                              std::vector<index_t> *prev_input_shape,
+                              Tensor *output,
+                              uint32_t *kwg_size,
+                              const int groups);
 
-extern MaceStatus Conv2dK3x3(OpContext *context,
-                             cl::Kernel *kernel,
-                             const Tensor *input,
-                             const Tensor *filter,
-                             const Tensor *bias,
-                             const int stride_h,
-                             const int stride_w,
-                             const int *padding,
-                             const int *dilations,
-                             const ActivationType activation,
-                             const float relux_max_limit,
-                             const float activation_coefficient,
-                             std::vector<index_t> *prev_input_shape,
-                             Tensor *output,
-                             uint32_t *kwg_size);
-
-extern MaceStatus Conv2d(OpContext *context,
-                         cl::Kernel *kernel,
-                         const Tensor *input,
-                         const Tensor *filter,
-                         const Tensor *bias,
-                         const int stride_h,
-                         const int stride_w,
-                         const int *padding,
-                         const int *dilations,
-                         const ActivationType activation,
-                         const float relux_max_limit,
-                         const float activation_coefficient,
-                         std::vector<index_t> *prev_input_shape,
-                         Tensor *output,
-                         uint32_t *kwg_size);
-
-extern MaceStatus WinogradConv2dK3x3S1(OpContext *context,
-                                       cl::Kernel *kernels[3],
-                                       const Tensor *input,
-                                       const Tensor *filter,
-                                       const Tensor *bias,
-                                       const int *padding,
-                                       const ActivationType activation,
-                                       const float relux_max_limit,
-                                       const float activation_coefficient,
-                                       const int wino_blk_size,
-                                       std::vector<index_t> *prev_input_shape,
-                                       Tensor *output,
-                                       uint32_t *kwg_size[3]);
-
-class Conv2dKernel : public OpenCLConv2dKernel {
+class GroupConv2dKernel : public OpenCLGroupConv2dKernel {
  public:
+  // TODO: (bcp) Wheter or not to really implement winograd should be determined
+  // later
   bool CheckUseWinograd(OpenclExecutor *executor,
                         const std::vector<index_t> &filter_shape,
                         const std::vector<index_t> &output_shape,
@@ -110,11 +67,12 @@ class Conv2dKernel : public OpenCLConv2dKernel {
                      const float relux_max_limit,
                      const float activation_coefficient,
                      const int wino_blk_size,
+                     const int groups,
                      Tensor *output) override;
 
  private:
-  cl::Kernel kernels_[3];
-  uint32_t kwg_size_[3];
+  cl::Kernel kernel_;
+  uint32_t kwg_size_;
   std::vector<index_t> input_shape_;
 };
 

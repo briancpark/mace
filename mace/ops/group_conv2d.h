@@ -35,6 +35,7 @@ class GroupConv2dOpBase : public Operation {
         padding_type_(static_cast<Padding>(
             Operation::GetOptionalArg<int>("padding", static_cast<int>(SAME)))),
         paddings_(Operation::GetRepeatedArgs<int>("padding_values")),
+        dilations_(Operation::GetRepeatedArgs<int>("dilations", {1, 1})),
         group_(Operation::GetOptionalArg<int>("group", 1)) {}
 
  protected:
