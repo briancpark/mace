@@ -22,11 +22,14 @@ __kernel void group_conv2d(
     __private const int padding_top,
     __private const int padding_left,
     __private const int dilation_h,
-    __private const int dilation_w) {
+    __private const int dilation_w,
+    __private const int groups) {
+
+
+
   const int out_ch_blk = get_global_id(0);
   const int out_w_blk = get_global_id(1);
   const int out_hb = get_global_id(2);
-
 #ifndef NON_UNIFORM_WORK_GROUP
   if (out_ch_blk >= global_size_dim0 || out_w_blk >= global_size_dim1 ||
       out_hb >= global_size_dim2) {
@@ -61,68 +64,80 @@ __kernel void group_conv2d(
 
   const int batch_idx = mul24((out_hb / out_height), in_height);
   const int filter_hw = mul24(filter_width, filter_height);
-  const int filter_y_idx_start =
-      mul24(out_ch_blk, filter_hw) + mul24(in_height_gap, filter_width);
+  const int filter_y_idx_start = mul24(out_ch_blk % (groups * 4), filter_hw) +
+                                 mul24(in_height_gap, filter_width);
 
   DATA_TYPE4 in0, in1, in2, in3;
   DATA_TYPE4 weights0, weights1, weights2, weights3;
-  for (short in_ch_blk = 0; in_ch_blk < in_ch_blks; ++in_ch_blk) {
-    const int in_idx = mul24(in_ch_blk, in_width);
-    int filter_x_idx = in_ch_blk << 2;
-    int filter_y_idx = filter_y_idx_start;
-    for (int hb_idx = in_height_start; hb_idx < in_height_end;
-         hb_idx += dilation_h) {
-      int in_hb_value = hb_idx + batch_idx;
-
+  for (short in_group = 0; in_group < in_ch_blks / groups; ++in_group) {
+    const int in_ch_blk_start = in_group * groups * 4;
+    int filter_y_idx = filter_y_idx_start + in_group * filter_hw * groups;
+    for (short in_ch_blk = 0; in_ch_blk < groups * 4; ++in_ch_blk) {
+      const int in_ch_blk_idx = in_ch_blk_start + in_ch_blk;
+      const int in_idx = mul24(in_ch_blk_idx, in_width);
+      int filter_x_idx = in_ch_blk % 4;
+      for (int hb_idx = in_height_start; hb_idx < in_height_end;
+           hb_idx += dilation_h) {
+        int in_hb_value = hb_idx + batch_idx;
 #pragma unroll
-      for (short width_idx = 0; width_idx < filter_width; ++width_idx) {
-        int in_width_value;
+        for (short width_idx = 0; width_idx < filter_width; ++width_idx) {
+          int in_width_value;
 #define READ_INPUT(i)                                                          \
-  in_width_value = in_width##i + mul24(width_idx, dilation_w);                 \
+  in_width_value = in_width + mul24(width_idx, dilation_w);                    \
   in_width_value = select(in_idx + in_width_value, -1,                         \
                           (in_width_value < 0 || in_width_value >= in_width)); \
-  in##i = READ_IMAGET(input, SAMPLER, (int2)(in_width_value, in_hb_value));
+  in[i] = READ_IMAGET(input, SAMPLER, (int2)(in_width_value, in_hb_value));
 
-        READ_INPUT(0);
-        READ_INPUT(1);
-        READ_INPUT(2);
-        READ_INPUT(3);
+          // #define READ_INPUT(i)
+          //           in_width_value = in_width##i + mul24(width_idx,
+          //           dilation_w); in_width_value =
+          //               select(in_idx + in_width_value, -1,
+          //                      (in_width_value < 0 || in_width_value >=
+          //                      in_width));
+          //           in##i =
+          //               READ_IMAGET(input, SAMPLER, (int2)(in_width_value,
+          //               in_hb_value));
+          //   READ_INPUT(0);
+          //   READ_INPUT(1);
+          //   READ_INPUT(2);
+          //   READ_INPUT(3);
 
 #undef READ_INPUT
 
-        // int filter_idx = (hb_idx * filter_width + width_idx) * in_ch +
-        // (in_ch_blk << 2);
-        weights0 = READ_IMAGET(filter, SAMPLER,
-                               (int2)(filter_x_idx + 0, filter_y_idx));
-        weights1 = READ_IMAGET(filter, SAMPLER,
-                               (int2)(filter_x_idx + 1, filter_y_idx));
-        weights2 = READ_IMAGET(filter, SAMPLER,
-                               (int2)(filter_x_idx + 2, filter_y_idx));
-        weights3 = READ_IMAGET(filter, SAMPLER,
-                               (int2)(filter_x_idx + 3, filter_y_idx));
+          // int filter_idx = (hb_idx * filter_width + width_idx) * in_ch +
+          // (in_ch_blk << 2);
+          weights0 = READ_IMAGET(filter, SAMPLER,
+                                 (int2)(filter_x_idx + 0, filter_y_idx));
+          weights1 = READ_IMAGET(filter, SAMPLER,
+                                 (int2)(filter_x_idx + 1, filter_y_idx));
+          weights2 = READ_IMAGET(filter, SAMPLER,
+                                 (int2)(filter_x_idx + 2, filter_y_idx));
+          weights3 = READ_IMAGET(filter, SAMPLER,
+                                 (int2)(filter_x_idx + 3, filter_y_idx));
 
-        out0 = mad(in0.x, weights0, out0);
-        out0 = mad(in0.y, weights1, out0);
-        out0 = mad(in0.z, weights2, out0);
-        out0 = mad(in0.w, weights3, out0);
+          out0 = mad(in0.x, weights0, out0);
+          out0 = mad(in0.y, weights1, out0);
+          out0 = mad(in0.z, weights2, out0);
+          out0 = mad(in0.w, weights3, out0);
 
 
-        out1 = mad(in1.x, weights0, out1);
-        out1 = mad(in1.y, weights1, out1);
-        out1 = mad(in1.z, weights2, out1);
-        out1 = mad(in1.w, weights3, out1);
+          out1 = mad(in1.x, weights0, out1);
+          out1 = mad(in1.y, weights1, out1);
+          out1 = mad(in1.z, weights2, out1);
+          out1 = mad(in1.w, weights3, out1);
 
-        out2 = mad(in2.x, weights0, out2);
-        out2 = mad(in2.y, weights1, out2);
-        out2 = mad(in2.z, weights2, out2);
-        out2 = mad(in2.w, weights3, out2);
+          out2 = mad(in2.x, weights0, out2);
+          out2 = mad(in2.y, weights1, out2);
+          out2 = mad(in2.z, weights2, out2);
+          out2 = mad(in2.w, weights3, out2);
 
-        out3 = mad(in3.x, weights0, out3);
-        out3 = mad(in3.y, weights1, out3);
-        out3 = mad(in3.z, weights2, out3);
-        out3 = mad(in3.w, weights3, out3);
+          out3 = mad(in3.x, weights0, out3);
+          out3 = mad(in3.y, weights1, out3);
+          out3 = mad(in3.z, weights2, out3);
+          out3 = mad(in3.w, weights3, out3);
 
-        filter_y_idx += 1;
+          filter_y_idx += groups * filter_hw;
+        }
       }
     }
   }

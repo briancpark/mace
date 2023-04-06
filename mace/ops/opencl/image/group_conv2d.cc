@@ -95,23 +95,27 @@ MaceStatus GroupConv2d(OpContext *context,
   MACE_OUT_OF_RANGE_DEFINITION;
 
   if (kernel->get() == nullptr) {
+    VLOG(3) << "kernel is null";
     std::set<std::string> built_options;
     MACE_OUT_OF_RANGE_CONFIG;
     MACE_NON_UNIFORM_WG_CONFIG;
     std::string kernel_name = MACE_OBFUSCATE_SYMBOL("group_conv2d");
-    built_options.emplace("-Dconv_2d=" + kernel_name);
+    built_options.emplace("-Dgroup_conv2d=" + kernel_name);
     built_options.emplace("-DDATA_TYPE=" + DtToCLDt(DT_FLOAT));
     built_options.emplace("-DCMD_DATA_TYPE=" + DtToCLCMDDt(DT_FLOAT));
     built_options.emplace(bias != nullptr ? "-DBIAS" : "");
     common::utils::FillBuiltOptions(&built_options, activation);
 
+    VLOG(3) << "time to execute";
+
     MACE_RETURN_IF_ERROR(executor->BuildKernel("group_conv2d", kernel_name,
                                                built_options, kernel));
-
+    VLOG(3) << "executed";
     *kwg_size =
         static_cast<uint32_t>(executor->GetKernelMaxWorkGroupSize(*kernel));
   }
 
+  VLOG(3) << "REGISTERED";
   const uint32_t gws[3] = {static_cast<uint32_t>(channel_blocks),
                            static_cast<uint32_t>(width_blocks),
                            static_cast<uint32_t>(height * batch)};
@@ -119,6 +123,7 @@ MaceStatus GroupConv2d(OpContext *context,
 
   // Support different input size
   if (IsResetArgsNeeded(context, *prev_input_shape, input->shape())) {
+    VLOG(3) << "RESET ARGS";
     uint32_t idx = 0;
     MACE_OUT_OF_RANGE_SET_ARGS(*kernel);
     MACE_SET_3D_GWS_ARGS(*kernel, gws);
@@ -143,8 +148,10 @@ MaceStatus GroupConv2d(OpContext *context,
     kernel->setArg(idx++, padding[1] / 2);
     kernel->setArg(idx++, dilations[0]);
     kernel->setArg(idx++, dilations[1]);
+    kernel->setArg(idx++, groups);
 
     *prev_input_shape = input->shape();
+    VLOG(3) << "RESET ARGS SUCCESS";
   }
 
   std::string tuning_key = Concat(
@@ -214,30 +221,24 @@ MaceStatus GroupConv2dKernel::Compute(OpContext *context,
     // separately.
     // The output is then concatenated.
     // Print the outputshape
+    // Output is in the form of [batch, output_height, output_width,
+    // output_channels
+
+    output_shape[0] = input->dim(0);
+    output_shape[1] = (input->dim(2) + paddings[1] -
+                       dilations[1] * (filter->dim(2) - 1) - 1) /
+                          strides[1] +
+                      1;
+    output_shape[2] = (input->dim(2) + paddings[1] -
+                       dilations[1] * (filter->dim(2) - 1) - 1) /
+                          strides[1] +
+                      1;
+    output_shape[3] = input->dim(3);
+
+    // Print the outputshape
     for (int i = 0; i < 4; i++) {
       VLOG(3) << "output_shape.data() = " << output_shape.data()[i];
     }
-    VLOG(3) << " before segfauolt    ";
-    output_shape[0] = input->dim(0);
-    VLOG(3) << " before segfauolt  inptutdim   ";
-    output_shape[1] = filter->dim(0);
-    VLOG(3) << " before segfauolt  dialatiobs   ";
-    // print the dialations
-    for (int i = 0; i < 2; i++) {
-      VLOG(3) << "dilations.data() = " << dilations[i];
-    }
-    VLOG(3) << " before segfauolt  filterdim   ";
-    output_shape[2] = (input->dim(2) + paddings[0] -
-                       dilations[0] * (filter->dim(2) - 1) - 1) /
-                          strides[0] +
-                      1;
-
-    VLOG(3) << " before segfauolt  filterdim   ";
-    output_shape[3] = (input->dim(3) + paddings[1] -
-                       dilations[1] * (filter->dim(3) - 1) - 1) /
-                          strides[1] +
-                      1;
-    VLOG(3) << " before segfauolt  filterdim   ";
   }
   VLOG(3) << "GroupConv2dKernel::Compute 2";
   MACE_RETURN_IF_ERROR(output->Resize(output_shape));
