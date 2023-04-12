@@ -2801,13 +2801,8 @@ class Transformer(base_converter.ConverterInterface):
                 group_arg.i = op.output_shape[0].dims[group_dim]
                 op.output_shape[0].dims[:] = output_shape
                 
-                # Patch error for dataformat
-                data_format = op.arg.add()
-                data_format.name = MaceKeyword.mace_data_format_str
-                # set the default value to NHWC
-                data_format.s = b'NHWC'
-                # add i
-                data_format.i = 0
+                # Patch error for dataformat: NHWC or NCHW depending on CPU or GPU mode
+                ConverterUtil.add_data_format_arg(op, DataFormat.AUTO)
                 
                 producer_op = self._producer.get(op.input[0], None)
                 if producer_op:
