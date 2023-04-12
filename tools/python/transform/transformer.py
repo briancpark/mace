@@ -379,7 +379,11 @@ class Transformer(base_converter.ConverterInterface):
             for input_name in op.input:
                 if input_name in self._consts:
                     const_tensor = self._consts[input_name]
-                    self._model.tensors.remove(const_tensor)
+                    try:
+                        self._model.tensors.remove(const_tensor)
+                    except ValueError:
+                        # The value might already be removed previously
+                        pass
 
         self._model.op.remove(op)
 
@@ -2796,8 +2800,15 @@ class Transformer(base_converter.ConverterInterface):
                 group_arg.name = MaceKeyword.mace_group_str
                 group_arg.i = op.output_shape[0].dims[group_dim]
                 op.output_shape[0].dims[:] = output_shape
-
-                # Remove previous Reshape op
+                
+                # Patch error for dataformat
+                data_format = op.arg.add()
+                data_format.name = MaceKeyword.mace_data_format_str
+                # set the default value to NHWC
+                data_format.s = b'NHWC'
+                # add i
+                data_format.i = 0
+                
                 producer_op = self._producer.get(op.input[0], None)
                 if producer_op:
                     if producer_op.type == MaceOp.Reshape.name:
