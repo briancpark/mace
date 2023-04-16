@@ -19,9 +19,9 @@
 #include <utility>
 #include <vector>
 
+#include "mace/core/ops/op_condition_context.h"
 #include "mace/core/ops/operator.h"
 #include "mace/core/ops/ops_utils.h"
-#include "mace/core/ops/op_condition_context.h"
 #include "mace/core/proto/net_def_helper.h"
 #include "mace/core/registry/ops_registry.h"
 #include "mace/utils/math.h"
@@ -33,14 +33,16 @@ struct FilterRulerInfo {
   const int filter_idx;
   const std::vector<int> nhwc_oihw;
   const std::vector<int> nchw_oihw;
-  FilterRulerInfo(int filter_index, const std::vector<int> nhwc2oihw,
+  FilterRulerInfo(int filter_index,
+                  const std::vector<int> nhwc2oihw,
                   const std::vector<int> nchw2oihw)
       : filter_idx(filter_index),
-        nhwc_oihw(std::move(nhwc2oihw)), nchw_oihw(std::move(nchw2oihw)) {}
+        nhwc_oihw(std::move(nhwc2oihw)),
+        nchw_oihw(std::move(nchw2oihw)) {}
 };
 
-typedef std::unordered_map<
-    std::string, std::unique_ptr<FilterRulerInfo>> FilterTransposeRuler;
+typedef std::unordered_map<std::string, std::unique_ptr<FilterRulerInfo>>
+    FilterTransposeRuler;
 
 FilterTransposeRuler GetFilterTransposeRuler(FrameworkType framework) {
   FilterTransposeRuler filter_ruler;
@@ -52,19 +54,23 @@ FilterTransposeRuler GetFilterTransposeRuler(FrameworkType framework) {
       // CPU: HWIO will be transposed to HOWI(because NHWC->NCHW),
       // {1, 3, 0, 2} does HOWI -> OIHW.
       filter_ruler.emplace("Conv2D", make_unique<FilterRulerInfo>(
-          1, std::vector<int>({3, 2, 0, 1}), std::vector<int>({1, 3, 0, 2})));
+                                         1, std::vector<int>({3, 2, 0, 1}),
+                                         std::vector<int>({1, 3, 0, 2})));
 
       // GPU: TF uses HWOI, {2, 3, 0, 1} does HWOI -> OIHW.
       // CPU: HWOI will be transposed to HIWO(because NHWC->HCHW),
       // {3, 1, 0, 2} does HIWO -> OIHW.
       filter_ruler.emplace("Deconv2D", make_unique<FilterRulerInfo>(
-          1, std::vector<int>({2, 3, 0, 1}), std::vector<int>({3, 1, 0, 2})));
+                                           1, std::vector<int>({2, 3, 0, 1}),
+                                           std::vector<int>({3, 1, 0, 2})));
 
       // GPU: TF uses HWIM, {3, 2, 0, 1} does HWIM -> MIHW.
       // CPU: HWIM will be transposed to HMWI(because NHWC -> NCHW),
       // {1, 3, 0, 2} does HMWI->MIHW.
-      filter_ruler.emplace("DepthwiseConv2d", make_unique<FilterRulerInfo>(
-          1, std::vector<int>({3, 2, 0, 1}), std::vector<int>({1, 3, 0, 2})));
+      filter_ruler.emplace(
+          "DepthwiseConv2d",
+          make_unique<FilterRulerInfo>(1, std::vector<int>({3, 2, 0, 1}),
+                                       std::vector<int>({1, 3, 0, 2})));
 
       break;
     case ONNX:
@@ -73,25 +79,31 @@ FilterTransposeRuler GetFilterTransposeRuler(FrameworkType framework) {
       // {0, 3, 1, 2} does OHWI -> OIHW.
       // CPU: Nothing is need.
       filter_ruler.emplace("Conv2D", make_unique<FilterRulerInfo>(
-          1, std::vector<int>({0, 3, 1, 2}), std::vector<int>({})));
+                                         1, std::vector<int>({0, 3, 1, 2}),
+                                         std::vector<int>({})));
 
       // GPU: IOHW will be transposed to IHWO(because NCHW->NHWC),
       // {3, 0, 1, 2} does IHWO->OIHW.
       // CPU: {1, 0,  2, 3} does IOHW->OIHW.
       filter_ruler.emplace("Deconv2D", make_unique<FilterRulerInfo>(
-          1, std::vector<int>({3, 0, 1, 2}), std::vector<int>({1, 0, 2, 3})));
+                                           1, std::vector<int>({3, 0, 1, 2}),
+                                           std::vector<int>({1, 0, 2, 3})));
 
       // GPU: O1HW will be transposed to OHW1(because NCHW->NHWC),
       // {3, 0, 1, 2} does OHW1 -> 1OHW(MIHW in MACE).
       // CPU: {1, 0, 2, 3} does O1HW -> 1OHW(MIHW in MACE).
-      filter_ruler.emplace("DepthwiseConv2d", make_unique<FilterRulerInfo>(
-          1, std::vector<int>({3, 0, 1, 2}), std::vector<int>({1, 0, 2, 3})));
+      filter_ruler.emplace(
+          "DepthwiseConv2d",
+          make_unique<FilterRulerInfo>(1, std::vector<int>({3, 0, 1, 2}),
+                                       std::vector<int>({1, 0, 2, 3})));
 
       // GPU: I1HW will be transposed to IHW1(because NCHW->NHWC),
       // {3, 0, 1, 2} does IHW1->1IHW(MIHW in MACE).
       // CPU: {1, 0, 2, 3} does I1HW->1IHW(MIHW in MACE).
-      filter_ruler.emplace("DepthwiseDeconv2d", make_unique<FilterRulerInfo>(
-          1, std::vector<int>({3, 0, 1, 2}), std::vector<int>({1, 0, 2, 3})));
+      filter_ruler.emplace(
+          "DepthwiseDeconv2d",
+          make_unique<FilterRulerInfo>(1, std::vector<int>({3, 0, 1, 2}),
+                                       std::vector<int>({1, 0, 2, 3})));
       break;
     default:
       break;
@@ -116,7 +128,7 @@ DataFormat GetDefaultDataFormat(RuntimeType runtime_type,
   }
 }
 
-template<typename T>
+template <typename T>
 std::string TransformedName(const std::string &input_name,
                             const std::string &tag,
                             const T value) {
@@ -125,13 +137,12 @@ std::string TransformedName(const std::string &input_name,
   return ss.str();
 }
 
-void BuildTransposeOpDef(
-    const std::string &input_name,
-    const std::string &output_name,
-    const std::vector<index_t> &output_shape,
-    const std::vector<int> dst_dims,
-    const DataType dt,
-    OperatorDef *op_def) {
+void BuildTransposeOpDef(const std::string &input_name,
+                         const std::string &output_name,
+                         const std::vector<index_t> &output_shape,
+                         const std::vector<int> dst_dims,
+                         const DataType dt,
+                         OperatorDef *op_def) {
   std::string op_name = "mace_node_" + output_name;
   op_def->set_name(op_name);
   op_def->set_type("Transpose");
@@ -156,8 +167,7 @@ void BuildTransposeOpDef(
 
 }  // namespace
 
-NetDefAdapter::NetDefAdapter(const OpRegistry *op_registry,
-                             const Workspace *ws)
+NetDefAdapter::NetDefAdapter(const OpRegistry *op_registry, const Workspace *ws)
     : op_registry_(op_registry), ws_(ws) {}
 
 MaceStatus NetDefAdapter::AdaptNetDef(const NetDef *net_def,
@@ -192,20 +202,18 @@ MaceStatus NetDefAdapter::AdaptNetDef(const NetDef *net_def,
   int input_size = target_net_def->input_info_size();
   for (int i = 0; i < input_size; ++i) {
     auto input_info = target_net_def->mutable_input_info(i);
-    auto input_data_format = static_cast<DataFormat>(
-        input_info->data_format());
+    auto input_data_format = static_cast<DataFormat>(input_info->data_format());
     std::vector<index_t> input_shape(input_info->dims().begin(),
                                      input_info->dims().end());
-    if (input_data_format != DataFormat::NONE
-        && input_data_format != expected_data_format
-        && input_shape.size() == 4) {
-      if (input_data_format == DataFormat::NHWC
-          && expected_data_format == DataFormat::NCHW) {
+    if (input_data_format != DataFormat::NONE &&
+        input_data_format != expected_data_format && input_shape.size() == 4) {
+      if (input_data_format == DataFormat::NHWC &&
+          expected_data_format == DataFormat::NCHW) {
         std::vector<int> dst_dims{0, 3, 1, 2};
         input_data_format = DataFormat::NCHW;
         input_shape = TransposeShape<index_t, index_t>(input_shape, dst_dims);
-      } else if (input_data_format == DataFormat::NCHW
-          && expected_data_format == DataFormat::NHWC) {
+      } else if (input_data_format == DataFormat::NCHW &&
+                 expected_data_format == DataFormat::NHWC) {
         std::vector<int> dst_dims{0, 2, 3, 1};
         input_data_format = DataFormat::NHWC;
         input_shape = TransposeShape<index_t, index_t>(input_shape, dst_dims);
@@ -217,9 +225,9 @@ MaceStatus NetDefAdapter::AdaptNetDef(const NetDef *net_def,
       }
     }
     tensor_shape_map.emplace(input_info->name(), input_shape);
-    output_map.emplace(input_info->name(), InternalOutputInfo(
-        mem_type, input_info->data_type(),
-        input_data_format, input_shape, -1));
+    output_map.emplace(input_info->name(),
+                       InternalOutputInfo(mem_type, input_info->data_type(),
+                                          input_data_format, input_shape, -1));
   }
 
   DataFormat op_output_data_format;
@@ -229,55 +237,34 @@ MaceStatus NetDefAdapter::AdaptNetDef(const NetDef *net_def,
     OpConditionContext context(ws_, &tensor_shape_map);
     context.set_operator_def(&op_def);
     // Select device
-    MACE_RETURN_IF_ERROR(this->AdaptDevice(&context,
-                                           target_runtime,
-                                           cpu_runtime,
-                                           output_map,
-                                           target_net_def,
-                                           &op_def));
+    MACE_RETURN_IF_ERROR(this->AdaptDevice(&context, target_runtime,
+                                           cpu_runtime, output_map,
+                                           target_net_def, &op_def));
 
     // Adapt data type
     MACE_RETURN_IF_ERROR(this->AdaptDataType(&context, &op_def));
 
     auto runtime_type = static_cast<RuntimeType>(op_def.device_type());
     if (runtime_type == RuntimeType::RT_OPENCL) {
-      MACE_RETURN_IF_ERROR(this->AdaptDataFormat(&context,
-                                                 &op_def,
-                                                 is_quantized_model,
-                                                 &output_map,
-                                                 &tensor_shape_map,
-                                                 &transformed_set,
-                                                 &op_output_data_format,
-                                                 target_net_def));
-      MACE_RETURN_IF_ERROR(this->AdaptMemoryType(&context,
-                                                 &op_def,
-                                                 &output_map,
-                                                 &tensor_shape_map,
-                                                 &transformed_set,
-                                                 &op_output_mem_type,
-                                                 target_net_def));
+      MACE_RETURN_IF_ERROR(this->AdaptDataFormat(
+          &context, &op_def, is_quantized_model, &output_map, &tensor_shape_map,
+          &transformed_set, &op_output_data_format, target_net_def));
+      MACE_RETURN_IF_ERROR(this->AdaptMemoryType(
+          &context, &op_def, &output_map, &tensor_shape_map, &transformed_set,
+          &op_output_mem_type, target_net_def));
     } else {
-      MACE_RETURN_IF_ERROR(this->AdaptMemoryType(&context,
-                                                 &op_def,
-                                                 &output_map,
-                                                 &tensor_shape_map,
-                                                 &transformed_set,
-                                                 &op_output_mem_type,
-                                                 target_net_def));
-      MACE_RETURN_IF_ERROR(this->AdaptDataFormat(&context,
-                                                 &op_def,
-                                                 is_quantized_model,
-                                                 &output_map,
-                                                 &tensor_shape_map,
-                                                 &transformed_set,
-                                                 &op_output_data_format,
-                                                 target_net_def));
+      MACE_RETURN_IF_ERROR(this->AdaptMemoryType(
+          &context, &op_def, &output_map, &tensor_shape_map, &transformed_set,
+          &op_output_mem_type, target_net_def));
+      MACE_RETURN_IF_ERROR(this->AdaptDataFormat(
+          &context, &op_def, is_quantized_model, &output_map, &tensor_shape_map,
+          &transformed_set, &op_output_data_format, target_net_def));
     }
     input_size = op_def.input_size();
     for (int i = 0; i < input_size; ++i) {
       if (output_map.count(op_def.input(i)) == 1) {
-        output_map.at(op_def.input(i)).consumer_op_indices.push_back(
-            target_net_def->op_size());
+        output_map.at(op_def.input(i))
+            .consumer_op_indices.push_back(target_net_def->op_size());
       }
     }
 
@@ -291,19 +278,15 @@ MaceStatus NetDefAdapter::AdaptNetDef(const NetDef *net_def,
             ProtoArgHelper::GetOptionalArg<OperatorDef, int>(
                 op_def, "T", static_cast<int>(DataType::DT_FLOAT)));
       }
-      auto output_shape = op_def.output_shape().empty() ?
-                          std::vector<index_t>() :
-                          std::vector<index_t>(
-                              op_def.output_shape(out_idx).dims().begin(),
-                              op_def.output_shape(out_idx).dims().end());
+      auto output_shape = op_def.output_shape().empty()
+                              ? std::vector<index_t>()
+                              : std::vector<index_t>(
+                                    op_def.output_shape(out_idx).dims().begin(),
+                                    op_def.output_shape(out_idx).dims().end());
       output_map.emplace(
           op_def.output(out_idx),
-          InternalOutputInfo(
-              op_output_mem_type,
-              dt,
-              op_output_data_format,
-              output_shape,
-              target_net_def->op_size()));
+          InternalOutputInfo(op_output_mem_type, dt, op_output_data_format,
+                             output_shape, target_net_def->op_size()));
       tensor_shape_map.emplace(op_def.output(out_idx), output_shape);
     }
     // Add op to target net
@@ -323,19 +306,17 @@ MaceStatus NetDefAdapter::AdaptNetDef(const NetDef *net_def,
       auto &internal_output_info = output_map.at(output_info.name());
       auto internal_omt = internal_output_info.mem_type;
       if ((internal_omt != target_mem_type &&
-          internal_omt != MemoryType::CPU_BUFFER) ||
+           internal_omt != MemoryType::CPU_BUFFER) ||
           internal_output_info.dtype != output_info.data_type()) {
         VLOG(1) << "Add Transform operation to transform output tensor '"
                 << output_info.name() << "', from memory type "
-                << internal_output_info.mem_type
-                << " to " << target_mem_type
-                << ", from Data Type " << internal_output_info.dtype
-                << " to " << output_info.data_type();
-        std::string t_output_name = TransformedName(output_info.name(),
-                                                    "mem_type",
-                                                    target_mem_type);
-        auto output_op_def = target_net_def->mutable_op(
-            internal_output_info.op_idx);
+                << internal_output_info.mem_type << " to " << target_mem_type
+                << ", from Data Type " << internal_output_info.dtype << " to "
+                << output_info.data_type();
+        std::string t_output_name =
+            TransformedName(output_info.name(), "mem_type", target_mem_type);
+        auto output_op_def =
+            target_net_def->mutable_op(internal_output_info.op_idx);
         int output_size = output_op_def->output_size();
         for (int i = 0; i < output_size; ++i) {
           if (output_op_def->output(i) == output_info.name()) {
@@ -353,22 +334,15 @@ MaceStatus NetDefAdapter::AdaptNetDef(const NetDef *net_def,
         }
         auto transformed_op_def = target_net_def->add_op();
         OpsUtils::BuildTransformOpDef(
-            t_output_name,
-            internal_output_info.shape,
-            output_info.name(),
-            output_data_type,
-            BufferContentType::IN_OUT_CHANNEL,
-            target_mem_type,
-            internal_output_info.data_format,
+            t_output_name, internal_output_info.shape, output_info.name(),
+            output_data_type, BufferContentType::IN_OUT_CHANNEL,
+            target_mem_type, internal_output_info.data_format,
             transformed_op_def);
         // Set data format arg
-        SetProtoArg<int>(
-            transformed_op_def,
-            "data_format",
-            static_cast<int>(internal_output_info.data_format));
+        SetProtoArg<int>(transformed_op_def, "data_format",
+                         static_cast<int>(internal_output_info.data_format));
         // Set output memory type argument
-        SetProtoArg<int>(transformed_op_def,
-                         OutputMemoryTypeTagName(),
+        SetProtoArg<int>(transformed_op_def, OutputMemoryTypeTagName(),
                          target_mem_type);
       }
     }
@@ -387,8 +361,13 @@ MaceStatus NetDefAdapter::AdaptDevice(OpConditionContext *context,
   VLOG(3) << "Adapt device for op " << op_def->name();
   RuntimeType target_runtime_type = target_runtime->GetRuntimeType();
   VLOG(3) << "target_runtime_type: " << static_cast<int>(target_runtime_type);
+  VLOG(3) << "This is the runtype code for CPU: "
+          << static_cast<int>(RuntimeType::RT_CPU);
+  VLOG(3) << "This is the runtype code for GPU: "
+          << static_cast<int>(RuntimeType::RT_OPENCL);
   RuntimeType runtime_type = RuntimeType::RT_CPU;
   context->set_runtime(target_runtime);
+  VLOG(3) << "target_runtime_type: " << static_cast<int>(target_runtime_type);
   if (target_runtime_type != RuntimeType::RT_CPU) {
     std::vector<RuntimeType> producer_runtimes;
     for (auto input : op_def->input()) {
@@ -396,19 +375,17 @@ MaceStatus NetDefAdapter::AdaptDevice(OpConditionContext *context,
         if (output_map.at(input).op_idx < 0) {
           producer_runtimes.push_back(target_runtime_type);
         } else {
-          producer_runtimes.push_back(
-              static_cast<RuntimeType>(
-                  net_def->op(output_map.at(input).op_idx).device_type()));
+          producer_runtimes.push_back(static_cast<RuntimeType>(
+              net_def->op(output_map.at(input).op_idx).device_type()));
         }
       }
     }
     // Get available runtimes
     auto available_runtimes =
         op_registry_->AvailableRuntimes(op_def->type(), context);
-    runtime_type = net_optimizer_.SelectBestRuntime(op_def,
-                                                    target_runtime_type,
-                                                    available_runtimes,
-                                                    producer_runtimes);
+    runtime_type = net_optimizer_.SelectBestRuntime(
+        op_def, target_runtime_type, available_runtimes, producer_runtimes);
+    VLOG(3) << "runtime_type: " << static_cast<int>(runtime_type);
     if (runtime_type != target_runtime_type) {
       context->set_runtime(cpu_runtime);
       SetProtoArg<int>(op_def, IsFallbackTagName(), 1);
@@ -425,8 +402,8 @@ MaceStatus NetDefAdapter::AdaptDataType(OpConditionContext *context,
   MACE_UNUSED(context);
   // Where to add logic to support mixing precision
   // Adjust data type of op ran on CPU
-  DataType dtype = static_cast<DataType>(
-      ProtoArgHelper::GetOptionalArg<OperatorDef, int>(
+  DataType dtype =
+      static_cast<DataType>(ProtoArgHelper::GetOptionalArg<OperatorDef, int>(
           *op_def, "T", static_cast<int>(DT_FLOAT)));
   auto runtime_type = static_cast<RuntimeType>(op_def->device_type());
   if (runtime_type == RuntimeType::RT_CPU && dtype == DT_HALF) {
@@ -447,8 +424,7 @@ MaceStatus NetDefAdapter::AdaptDataFormat(
   VLOG(3) << "Adapt data format for op " << op_def->name();
   DataFormat op_data_format =
       static_cast<DataFormat>(ProtoArgHelper::GetOptionalArg<OperatorDef, int>(
-          *op_def, "data_format",
-          static_cast<int>(DataFormat::NONE)));
+          *op_def, "data_format", static_cast<int>(DataFormat::NONE)));
   auto runtime_type = static_cast<RuntimeType>(op_def->device_type());
   // Adjust the data format of operation
   if (op_data_format == DataFormat::AUTO) {
@@ -463,7 +439,8 @@ MaceStatus NetDefAdapter::AdaptDataFormat(
           std::vector<index_t> output_shape(raw_output_shape->dims().begin(),
                                             raw_output_shape->dims().end());
           std::vector<int> dst_dims{0, 3, 1, 2};
-          output_shape = TransposeShape<index_t, index_t>(output_shape, dst_dims);
+          output_shape =
+              TransposeShape<index_t, index_t>(output_shape, dst_dims);
           int size = output_shape.size();
           for (int j = 0; j < size; ++j) {
             raw_output_shape->set_dims(j, output_shape[j]);
@@ -483,7 +460,8 @@ MaceStatus NetDefAdapter::AdaptDataFormat(
           std::vector<index_t> output_shape(raw_output_shape->dims().begin(),
                                             raw_output_shape->dims().end());
           std::vector<int> dst_dims{0, 2, 3, 1};
-          output_shape = TransposeShape<index_t, index_t>(output_shape, dst_dims);
+          output_shape =
+              TransposeShape<index_t, index_t>(output_shape, dst_dims);
           int size = output_shape.size();
           for (int j = 0; j < size; ++j) {
             raw_output_shape->set_dims(j, output_shape[j]);
@@ -494,17 +472,17 @@ MaceStatus NetDefAdapter::AdaptDataFormat(
   }
   *op_output_df = op_data_format;
 
-  auto inputs_data_format = op_registry_->InputsDataFormat(op_def->type(),
-                                                           context);
+  auto inputs_data_format =
+      op_registry_->InputsDataFormat(op_def->type(), context);
   DataFormat src_df, dst_df;
   int input_size = op_def->input_size();
   for (int i = 0; i < input_size; ++i) {
     if (output_map->count(op_def->input(i)) == 0) {
       // Check this input is const tensor(filter)
-      MACE_CHECK(ws_->GetTensor(op_def->input(i)) != nullptr
-                     && ws_->GetTensor(op_def->input(i))->is_weight(),
-                 "Tensor ", op_def->input(i), " of ",
-                 op_def->name(), " is not allocated by Workspace ahead");
+      MACE_CHECK(ws_->GetTensor(op_def->input(i)) != nullptr &&
+                     ws_->GetTensor(op_def->input(i))->is_weight(),
+                 "Tensor ", op_def->input(i), " of ", op_def->name(),
+                 " is not allocated by Workspace ahead");
       continue;
     }
 
@@ -538,10 +516,10 @@ MaceStatus NetDefAdapter::AdaptMemoryType(
   int input_size = op_def->input_size();
   for (int i = 0; i < input_size; ++i) {
     if (output_map->count(op_def->input(i)) == 0) {
-      MACE_CHECK(ws_->GetTensor(op_def->input(i)) != nullptr
-                     && ws_->GetTensor(op_def->input(i))->is_weight(),
-                 "Tensor ", op_def->input(i), " of ",
-                 op_def->name(), " not allocated");
+      MACE_CHECK(ws_->GetTensor(op_def->input(i)) != nullptr &&
+                     ws_->GetTensor(op_def->input(i))->is_weight(),
+                 "Tensor ", op_def->input(i), " of ", op_def->name(),
+                 " not allocated");
       continue;
     }
     auto &input_info = output_map->at(op_def->input(i));
@@ -551,8 +529,8 @@ MaceStatus NetDefAdapter::AdaptMemoryType(
     auto wanted_input_dtype = context->GetInputDataType(i);
     if (src_mem_type != dst_mem_type ||
         (input_info.dtype != wanted_input_dtype &&
-            (src_mem_type != MemoryType::CPU_BUFFER
-                || dst_mem_type != MemoryType::CPU_BUFFER))) {
+         (src_mem_type != MemoryType::CPU_BUFFER ||
+          dst_mem_type != MemoryType::CPU_BUFFER))) {
       // GPU_IMAGE => CPU_BUFFER change to GPU_IMAGE =>GPU_BUFFER
       if (src_mem_type == GPU_IMAGE) {
         if (dst_mem_type == CPU_BUFFER) {
@@ -561,47 +539,36 @@ MaceStatus NetDefAdapter::AdaptMemoryType(
         }
       }
 
-      auto transformed_name = TransformedName(op_def->input(i),
-                                              "mem_type",
-                                              dst_mem_type);
+      auto transformed_name =
+          TransformedName(op_def->input(i), "mem_type", dst_mem_type);
       // Check whether the tensor has been transformed
       if (transformed_set->count(transformed_name) == 0) {
         VLOG(1) << "Add Transform operation for " << op_def->name()
-                << " to transform its tensor "
-                << op_def->input(i) << "', from memory type "
-                << src_mem_type << " to " << dst_mem_type;
+                << " to transform its tensor " << op_def->input(i)
+                << "', from memory type " << src_mem_type << " to "
+                << dst_mem_type;
         OperatorDef *transformed_op_def = target_net_def->add_op();
         OpsUtils::BuildTransformOpDef(
-            op_def->input(i),
-            input_info.shape,
-            transformed_name,
-            wanted_input_dtype,
-            context->GetInputBufferContentType(i),
-            dst_mem_type,
-            input_info.data_format,
-            transformed_op_def);
+            op_def->input(i), input_info.shape, transformed_name,
+            wanted_input_dtype, context->GetInputBufferContentType(i),
+            dst_mem_type, input_info.data_format, transformed_op_def);
         // Set data format arg
-        SetProtoArg<int>(transformed_op_def,
-                         "data_format",
+        SetProtoArg<int>(transformed_op_def, "data_format",
                          static_cast<int>(input_info.data_format));
         // Set output memory type argument
-        SetProtoArg<int>(transformed_op_def,
-                         OutputMemoryTypeTagName(),
+        SetProtoArg<int>(transformed_op_def, OutputMemoryTypeTagName(),
                          dst_mem_type);
 
         // Update tensor consumer information
-        output_map->at(op_def->input(i)).consumer_op_indices.push_back(
-            target_net_def->op_size() - 1);
+        output_map->at(op_def->input(i))
+            .consumer_op_indices.push_back(target_net_def->op_size() - 1);
 
         // Update output information map
         output_map->emplace(
             transformed_name,
-            InternalOutputInfo(
-                dst_mem_type,
-                context->GetInputDataType(i),
-                input_info.data_format,
-                input_info.shape,
-                target_net_def->op_size() - 1));
+            InternalOutputInfo(dst_mem_type, context->GetInputDataType(i),
+                               input_info.data_format, input_info.shape,
+                               target_net_def->op_size() - 1));
         // Update tensor shape map
         tensor_shape_map->emplace(transformed_name, input_info.shape);
         // Record transformed tensors
@@ -619,18 +586,20 @@ MaceStatus NetDefAdapter::AdaptMemoryType(
 #endif  // MACE_ENABLE_OPENCL
 
   *op_output_mem_types = context->output_mem_type();
-  SetProtoArg<int>(op_def,
-                   OutputMemoryTypeTagName(),
+  SetProtoArg<int>(op_def, OutputMemoryTypeTagName(),
                    context->output_mem_type());
   return MaceStatus::MACE_SUCCESS;
 }
 
 std::vector<int> NetDefAdapter::GetDstDimsFromTransposeRuler(
-    TensorInfoMap *output_map, const OperatorDef *op_def, const int input_idx,
-    const DataFormat src_df, const DataFormat dst_df) {
+    TensorInfoMap *output_map,
+    const OperatorDef *op_def,
+    const int input_idx,
+    const DataFormat src_df,
+    const DataFormat dst_df) {
   std::vector<int> dst_dims;
-  if (src_df == DataFormat::NONE || dst_df == DataFormat::NONE
-      || output_map->at(op_def->input(input_idx)).shape.size() != 4) {
+  if (src_df == DataFormat::NONE || dst_df == DataFormat::NONE ||
+      output_map->at(op_def->input(input_idx)).shape.size() != 4) {
     return dst_dims;
   }
 
@@ -647,18 +616,19 @@ std::vector<int> NetDefAdapter::GetDstDimsFromTransposeRuler(
           *op_def, "framework_type", 0);
       FrameworkType framework = static_cast<FrameworkType>(int_framework);
       auto &op_type = op_def->type();
-      if (TENSORFLOW == framework  && "DepthwiseDeconv2d" == op_type) {
+      if (TENSORFLOW == framework && "DepthwiseDeconv2d" == op_type) {
         LOG(FATAL) << "Tensorflow does not support DepthwiseDeconv2d.";
       }
       if (TENSORFLOW != framework && ONNX != framework &&
           PYTORCH != framework) {
         LOG(FATAL) << "Only support transposing TENSORFLOW/ONNX/PYTORCH filter"
-          << " into OIHW format, but framework " << framework << " is got.";
+                   << " into OIHW format, but framework " << framework
+                   << " is got.";
       }
       static const auto filter_transpose_ruler =
           GetFilterTransposeRuler(framework);
       MACE_CHECK((filter_transpose_ruler.count(op_type) > 0) &&
-          filter_transpose_ruler.at(op_type)->filter_idx == input_idx);
+                 filter_transpose_ruler.at(op_type)->filter_idx == input_idx);
       if (src_df == DataFormat::NCHW) {
         dst_dims = filter_transpose_ruler.at(op_type)->nchw_oihw;
         transposable = true;
@@ -678,29 +648,33 @@ std::vector<int> NetDefAdapter::GetDstDimsFromTransposeRuler(
 }
 
 MaceStatus NetDefAdapter::AddTranposeOpForDataFormat(
-    TensorInfoMap *output_map, TensorShapeMap *tensor_shape_map,
-    std::unordered_set<std::string> *transformed_set, NetDef *target_net_def,
-    OperatorDef *op_def, const int i,
-    const DataFormat dst_df, const std::vector<int> &dst_dims) {
+    TensorInfoMap *output_map,
+    TensorShapeMap *tensor_shape_map,
+    std::unordered_set<std::string> *transformed_set,
+    NetDef *target_net_def,
+    OperatorDef *op_def,
+    const int i,
+    const DataFormat dst_df,
+    const std::vector<int> &dst_dims) {
   auto &input_info = output_map->at(op_def->input(i));
   std::string transpose_input = op_def->input(i);
 #ifdef MACE_ENABLE_OPENCL
   bool need_img2buf = MemoryType::GPU_IMAGE == input_info.mem_type &&
-      4 == input_info.shape.size();
+                      4 == input_info.shape.size();
   if (need_img2buf) {
-    std::string img2buf_name = BuildImageToBufferOp(
-        output_map, tensor_shape_map, transformed_set, target_net_def,
-        op_def, i, input_info);
+    std::string img2buf_name =
+        BuildImageToBufferOp(output_map, tensor_shape_map, transformed_set,
+                             target_net_def, op_def, i, input_info);
     transpose_input = img2buf_name;
   }  // GPU_IMAGE == input_info.mem_type
 #endif
-  std::string transformed_name = TransformedName(
-      op_def->input(i), "data_format", MakeString(dst_dims));
+  std::string transformed_name =
+      TransformedName(op_def->input(i), "data_format", MakeString(dst_dims));
   if (transformed_set->count(transformed_name) == 0) {
-    auto output_shape = input_info.shape.empty() ?
-                        std::vector<index_t>() :
-                        TransposeShape<index_t, index_t>(input_info.shape,
-                                                         dst_dims);
+    auto output_shape =
+        input_info.shape.empty()
+            ? std::vector<index_t>()
+            : TransposeShape<index_t, index_t>(input_info.shape, dst_dims);
     OperatorDef *transpose_op_def = target_net_def->add_op();
     BuildTransposeOpDef(transpose_input, transformed_name, output_shape,
                         dst_dims, input_info.dtype, transpose_op_def);
@@ -714,15 +688,16 @@ MaceStatus NetDefAdapter::AddTranposeOpForDataFormat(
 #ifdef MACE_ENABLE_OPENCL
     if (!need_img2buf) {
 #endif
-      output_map->at(op_def->input(i)).consumer_op_indices.push_back(
-          target_net_def->op_size() - 1);
+      output_map->at(op_def->input(i))
+          .consumer_op_indices.push_back(target_net_def->op_size() - 1);
 #ifdef MACE_ENABLE_OPENCL
     }
 #endif
     // Update output information map
-    output_map->emplace(transformed_name, InternalOutputInfo(
-        CPU_BUFFER, input_info.dtype, dst_df, output_shape,
-        target_net_def->op_size() - 1));
+    output_map->emplace(
+        transformed_name,
+        InternalOutputInfo(CPU_BUFFER, input_info.dtype, dst_df, output_shape,
+                           target_net_def->op_size() - 1));
     // Update tensor shape map
     tensor_shape_map->emplace(transformed_name, output_shape);
     // Record transformed tensors
@@ -771,20 +746,18 @@ std::string NetDefAdapter::DebugString(const NetDef *net_def) {
     }
   };
   for (auto &op : net_def->op()) {
-    std::string runtime_type = RuntimeTypeToStrFunc(
-        static_cast<RuntimeType>(op.device_type()));
+    std::string runtime_type =
+        RuntimeTypeToStrFunc(static_cast<RuntimeType>(op.device_type()));
     auto dt = ProtoArgHelper::GetOptionalArg<OperatorDef, int>(
         op, "T", static_cast<int>(DT_FLOAT));
     std::string data_type = DataTypeToString(static_cast<DataType>(dt));
-    std::string mem_type = MemoryTypeToStrFunc(
-        static_cast<MemoryType>(
-            ProtoArgHelper::GetOptionalArg<OperatorDef, int>(
-                op, OutputMemoryTypeTagName(),
-                static_cast<int>(MemoryType::CPU_BUFFER))));
-    std::string data_format = DataFormatToStrFunc(
-        static_cast<DataFormat>(
-            ProtoArgHelper::GetOptionalArg<OperatorDef, int>(
-                op, "data_format", static_cast<int>(DataFormat::NONE))));
+    std::string mem_type = MemoryTypeToStrFunc(static_cast<MemoryType>(
+        ProtoArgHelper::GetOptionalArg<OperatorDef, int>(
+            op, OutputMemoryTypeTagName(),
+            static_cast<int>(MemoryType::CPU_BUFFER))));
+    std::string data_format = DataFormatToStrFunc(static_cast<DataFormat>(
+        ProtoArgHelper::GetOptionalArg<OperatorDef, int>(
+            op, "data_format", static_cast<int>(DataFormat::NONE))));
 
     sstream << std::endl;
     sstream << "{" << std::endl;
@@ -807,8 +780,7 @@ std::string NetDefAdapter::DebugString(const NetDef *net_def) {
     sstream << "  output shapes: [";
     for (auto output_shape : op.output_shape()) {
       sstream << "(";
-      for (auto dim : output_shape.dims())
-        sstream << dim << ",";
+      for (auto dim : output_shape.dims()) sstream << dim << ",";
       sstream << ") ";
     }
     sstream << "]" << std::endl;
@@ -819,40 +791,34 @@ std::string NetDefAdapter::DebugString(const NetDef *net_def) {
 
 #ifdef MACE_ENABLE_OPENCL
 std::string NetDefAdapter::BuildImageToBufferOp(
-    TensorInfoMap *output_map, TensorShapeMap *tensor_shape_map,
-    std::unordered_set<std::string> *transformed_set, NetDef *target_net_def,
-    OperatorDef *op_def, const int i, const InternalOutputInfo &input_info) {
+    TensorInfoMap *output_map,
+    TensorShapeMap *tensor_shape_map,
+    std::unordered_set<std::string> *transformed_set,
+    NetDef *target_net_def,
+    OperatorDef *op_def,
+    const int i,
+    const InternalOutputInfo &input_info) {
   // Transposing GPU_IMAGE is impossible, image_to_buffer is needed.
-  std::string img2buf_name = TransformedName(op_def->input(i),
-                                             "_mem_type_",
-                                             MemoryType::GPU_BUFFER);
+  std::string img2buf_name =
+      TransformedName(op_def->input(i), "_mem_type_", MemoryType::GPU_BUFFER);
   if (0 == transformed_set->count(img2buf_name)) {
     OperatorDef *transformed_op_def = target_net_def->add_op();
     OpsUtils::BuildTransformOpDef(
-        op_def->input(i),
-        input_info.shape,
-        img2buf_name,
-        input_info.dtype,
-        BufferContentType::IN_OUT_CHANNEL,
-        MemoryType::GPU_BUFFER,
-        input_info.data_format,
-        transformed_op_def);
+        op_def->input(i), input_info.shape, img2buf_name, input_info.dtype,
+        BufferContentType::IN_OUT_CHANNEL, MemoryType::GPU_BUFFER,
+        input_info.data_format, transformed_op_def);
     // Set output memory type argument
-    SetProtoArg<int>(transformed_op_def,
-                     OutputMemoryTypeTagName(),
+    SetProtoArg<int>(transformed_op_def, OutputMemoryTypeTagName(),
                      MemoryType::GPU_BUFFER);
     // Update tensor consumer information
-    output_map->at(op_def->input(i)).consumer_op_indices.push_back(
-        target_net_def->op_size() - 1);
+    output_map->at(op_def->input(i))
+        .consumer_op_indices.push_back(target_net_def->op_size() - 1);
     // Update output information map
     output_map->emplace(
         img2buf_name,
-        InternalOutputInfo(
-            MemoryType::GPU_BUFFER,
-            input_info.dtype,
-            input_info.data_format,
-            input_info.shape,
-            target_net_def->op_size() - 1));
+        InternalOutputInfo(MemoryType::GPU_BUFFER, input_info.dtype,
+                           input_info.data_format, input_info.shape,
+                           target_net_def->op_size() - 1));
     // Update tensor shape map
     tensor_shape_map->emplace(img2buf_name, input_info.shape);
     transformed_set->insert(img2buf_name);

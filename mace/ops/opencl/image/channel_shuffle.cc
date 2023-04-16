@@ -21,10 +21,9 @@ namespace ops {
 namespace opencl {
 namespace image {
 
-MaceStatus ChannelShuffleKernel::Compute(
-    OpContext *context,
-    const Tensor *input,
-    Tensor *output) {
+MaceStatus ChannelShuffleKernel::Compute(OpContext *context,
+                                         const Tensor *input,
+                                         Tensor *output) {
   MACE_CHECK(input->dim(3) % groups_ == 0,
              "input channels must be an integral multiple of group. ",
              input->dim(3));
@@ -52,9 +51,8 @@ MaceStatus ChannelShuffleKernel::Compute(
     built_options.emplace("-Dchannel_shuffle=" + kernel_name);
     built_options.emplace("-DDATA_TYPE=" + DtToCLDt(DT_FLOAT));
     built_options.emplace("-DCMD_DATA_TYPE=" + DtToCLCMDDt(DT_FLOAT));
-    MACE_RETURN_IF_ERROR(
-        executor->BuildKernel("channel_shuffle", kernel_name,
-                              built_options, &kernel_));
+    MACE_RETURN_IF_ERROR(executor->BuildKernel("channel_shuffle", kernel_name,
+                                               built_options, &kernel_));
 
     kwg_size_ =
         static_cast<uint32_t>(executor->GetKernelMaxWorkGroupSize(kernel_));
@@ -77,8 +75,8 @@ MaceStatus ChannelShuffleKernel::Compute(
   std::string tuning_key =
       Concat("channel_shuffle_opencl_kernel", output->dim(0), output->dim(1),
              output->dim(2), output->dim(3));
-  MACE_RETURN_IF_ERROR(TuningOrRun3DKernel(executor, kernel_, tuning_key,
-                                           gws, lws, context->future(), context));
+  MACE_RETURN_IF_ERROR(TuningOrRun3DKernel(executor, kernel_, tuning_key, gws,
+                                           lws, context->future(), context));
   MACE_OUT_OF_RANGE_VALIDATION;
   return MaceStatus::MACE_SUCCESS;
 }

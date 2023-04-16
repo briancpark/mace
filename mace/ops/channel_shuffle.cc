@@ -24,10 +24,10 @@
 namespace mace {
 namespace ops {
 
-template<RuntimeType D, class T>
+template <RuntimeType D, class T>
 class ChannelShuffleOp;
 
-template<typename T>
+template <typename T>
 class ChannelShuffleOp<RuntimeType::RT_CPU, T> : public Operation {
  public:
   explicit ChannelShuffleOp(OpConstructContext *context)
@@ -59,8 +59,8 @@ class ChannelShuffleOp<RuntimeType::RT_CPU, T> : public Operation {
       for (index_t c = 0; c < channels; ++c) {
         index_t g = c % groups_;
         index_t idx = c / groups_;
-        const T *in_ptr = input_ptr + b * batch_size
-            + (g * channels_per_group + idx) * image_size;
+        const T *in_ptr = input_ptr + b * batch_size +
+                          (g * channels_per_group + idx) * image_size;
         T *out_ptr = output_ptr + b * batch_size + c * image_size;
         memcpy(out_ptr, in_ptr, image_size * sizeof(T));
       }
@@ -74,11 +74,10 @@ class ChannelShuffleOp<RuntimeType::RT_CPU, T> : public Operation {
 };
 
 #ifdef MACE_ENABLE_OPENCL
-template<>
+template <>
 class ChannelShuffleOp<RuntimeType::RT_OPENCL, float> : public Operation {
  public:
-  explicit ChannelShuffleOp(OpConstructContext *context)
-      : Operation(context) {
+  explicit ChannelShuffleOp(OpConstructContext *context) : Operation(context) {
     const int groups = Operation::GetOptionalArg<int>("group", 1);
     if (context->GetOpMemoryType() == MemoryType::GPU_IMAGE) {
       kernel_ = make_unique<opencl::image::ChannelShuffleKernel>(groups);
@@ -98,10 +97,10 @@ class ChannelShuffleOp<RuntimeType::RT_OPENCL, float> : public Operation {
 #endif  // MACE_ENABLE_OPENCL
 
 void RegisterChannelShuffle(OpRegistry *op_registry) {
-  MACE_REGISTER_OP(op_registry, "ChannelShuffle",
-                   ChannelShuffleOp, RuntimeType::RT_CPU, float);
-  MACE_REGISTER_BF16_OP(op_registry, "ChannelShuffle",
-                        ChannelShuffleOp, RuntimeType::RT_CPU);
+  MACE_REGISTER_OP(op_registry, "ChannelShuffle", ChannelShuffleOp,
+                   RuntimeType::RT_CPU, float);
+  MACE_REGISTER_BF16_OP(op_registry, "ChannelShuffle", ChannelShuffleOp,
+                        RuntimeType::RT_CPU);
 
   MACE_REGISTER_GPU_OP(op_registry, "ChannelShuffle", ChannelShuffleOp);
 
@@ -121,10 +120,11 @@ void RegisterChannelShuffle(OpRegistry *op_registry) {
                 }
                 index_t channels = op->output_shape(0).dims(3);
                 index_t channels_per_group = channels / groups;
-                if (groups % 4 != 0 || channels_per_group % 4 != 0) {
+                if ((groups % 4 != 0 || channels_per_group % 4 != 0) &&
+                    (groups % 2 != 0 || channels_per_group % 2 != 0)) {
                   return {RuntimeType::RT_CPU};
                 }
-                return {RuntimeType::RT_CPU, RuntimeType::RT_OPENCL};
+                return {RuntimeType::RT_OPENCL};
               }));
 }
 

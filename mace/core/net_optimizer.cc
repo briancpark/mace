@@ -24,9 +24,8 @@ RuntimeType NetOptimizer::SelectBestRuntime(
     const std::set<RuntimeType> &available_runtimes,
     const std::vector<RuntimeType> &inputs_op_runtimes) {
   static const std::set<std::string> kComputeIntensiveOps = {
-      "Conv2D", "DepthwiseConv2d", "Deconv2D", "DepthwiseDeconv2d",
-      "FullyConnected"
-  };
+      "Conv2D",         "DepthwiseConv2d", "Deconv2D", "DepthwiseDeconv2d",
+      "FullyConnected", "ChannelShuffle"};
   // CPU is the runtime to fall back
   RuntimeType best_runtime = RuntimeType::RT_CPU;
   if (available_runtimes.count(target_runtime_type) == 1) {
