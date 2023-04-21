@@ -1096,6 +1096,7 @@ class Transformer(base_converter.ConverterInterface):
         net = self._model
         for op in net.op:
             if (op.type == MaceOp.Conv2D.name
+                or op.type == MaceOp.GroupConv2d.name
                 or op.type == MaceOp.Deconv2D.name
                 or op.type == MaceOp.DepthwiseConv2d.name
                 or op.type == MaceOp.FullyConnected.name
