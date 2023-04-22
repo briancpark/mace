@@ -49,12 +49,12 @@ namespace mace {
 namespace ops {
 
 template <RuntimeType D, class T>
-class GroupConv2d;
+class GroupConv2dOp;
 
 template <class T>
-class GroupConv2d<RuntimeType::RT_CPU, T> : public GroupConv2dOpBase {
+class GroupConv2dOp<RuntimeType::RT_CPU, T> : public GroupConv2dOpBase {
  public:
-  explicit GroupConv2d(OpConstructContext *context)
+  explicit GroupConv2dOp(OpConstructContext *context)
       : GroupConv2dOpBase(context),
         activation_delegator_(delegator::Activation::Create(
             context->workspace(),
@@ -222,9 +222,9 @@ class GroupConv2d<RuntimeType::RT_CPU, T> : public GroupConv2dOpBase {
 
 #ifdef MACE_ENABLE_OPENCL
 template <>
-class GroupConv2d<RuntimeType::RT_OPENCL, float> : public GroupConv2dOpBase {
+class GroupConv2dOp<RuntimeType::RT_OPENCL, float> : public GroupConv2dOpBase {
  public:
-  explicit GroupConv2d(OpConstructContext *context)
+  explicit GroupConv2dOp(OpConstructContext *context)
       : GroupConv2dOpBase(context),
         activation_(ops::StringToActivationType(
             Operation::GetOptionalArg<std::string>("activation", "NOOP"))),
@@ -295,6 +295,13 @@ class GroupConv2d<RuntimeType::RT_OPENCL, float> : public GroupConv2dOpBase {
     Tensor *output = this->Output(OUTPUT);
     // Print out the contents of the padding
     // printout the size of the paddings
+    // print the filter shape, input shape, output shape
+    VLOG(1) << "Filter shape is " << filter->dim(0) << " " << filter->dim(1)
+            << " " << filter->dim(2) << " " << filter->dim(3);
+    VLOG(1) << "Input shape is " << input->dim(0) << " " << input->dim(1) << " "
+            << input->dim(2) << " " << input->dim(3);
+    VLOG(1) << "Output shape is " << output->dim(0) << " " << output->dim(1)
+            << " " << output->dim(2) << " " << output->dim(3);
     VLOG(1) << "Paddings size is " << paddings_.size();
     for (int i = 0; i < 2; i++) {
       VLOG(1) << "Padding " << i << " is " << paddings_[i];
@@ -332,10 +339,10 @@ class GroupConv2d<RuntimeType::RT_OPENCL, float> : public GroupConv2dOpBase {
 #endif  // MACE_ENABLE_OPENCL
 
 void RegisterGroupConv2d(OpRegistry *op_registry) {
-  MACE_REGISTER_OP(op_registry, "GroupConv2d", GroupConv2d, RuntimeType::RT_CPU,
-                   float);
+  MACE_REGISTER_OP(op_registry, "GroupConv2d", GroupConv2dOp,
+                   RuntimeType::RT_CPU, float);
 
-  MACE_REGISTER_GPU_OP(op_registry, "GroupConv2d", GroupConv2d);
+  MACE_REGISTER_GPU_OP(op_registry, "GroupConv2d", GroupConv2dOp);
 
 #ifdef MACE_ENABLE_OPENCL
   MACE_REGISTER_OP_CONDITION(
@@ -344,11 +351,9 @@ void RegisterGroupConv2d(OpRegistry *op_registry) {
           .SetInputMemoryTypeSetter([](OpConditionContext *context) -> void {
             SetFilterMemoryType(context, BufferContentType::CONV2D_FILTER);
           }));
-  VLOG(3) << "SUCCESSFULLY REGISTERED GPU GCONV";
 #endif  // MACE_ENABLE_OPENCL
-  VLOG(3) << "REGISTERED GPU GCONV";
+
   RegisterFilterDataFormat(op_registry, "GroupConv2d");
-  VLOG(3) << "REGISTERED GPU GCONV FILTER";
 }
 
 }  // namespace ops

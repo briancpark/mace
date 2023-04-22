@@ -79,7 +79,8 @@ MaceStatus GroupConv2d(OpContext *context,
                        Tensor *output,
                        uint32_t *kwg_size,
                        const int groups) {
-  VLOG(3) << "GroupConv2d OPENCL OP";
+  VLOG(3) << "GroupConv2d OPENCL OP";  // Print out the kernel
+  VLOG(3) << "kernel: " << kernel;
   const index_t batch = output->dim(0);
   const index_t height = output->dim(1);
   const index_t width = output->dim(2);
@@ -110,7 +111,7 @@ MaceStatus GroupConv2d(OpContext *context,
 
     MACE_RETURN_IF_ERROR(executor->BuildKernel("group_conv2d", kernel_name,
                                                built_options, kernel));
-    VLOG(3) << "executed";
+    VLOG(3) << "built kernel successfully";
     *kwg_size =
         static_cast<uint32_t>(executor->GetKernelMaxWorkGroupSize(*kernel));
   }
@@ -125,30 +126,53 @@ MaceStatus GroupConv2d(OpContext *context,
   if (IsResetArgsNeeded(context, *prev_input_shape, input->shape())) {
     VLOG(3) << "RESET ARGS";
     uint32_t idx = 0;
+    VLOG(3) << "start of arg idx" << idx;
     MACE_OUT_OF_RANGE_SET_ARGS(*kernel);
+    VLOG(3) << "out of range set args" << idx;
     MACE_SET_3D_GWS_ARGS(*kernel, gws);
+    VLOG(3) << "set 3d gws args" << idx;
     kernel->setArg(idx++, *(input->memory<cl::Image>()));
+    VLOG(3) << "set input arg" << idx;
     kernel->setArg(idx++, *(filter->memory<cl::Image>()));
+    VLOG(3) << "set filter arg" << idx;
     if (bias != nullptr) {
       kernel->setArg(idx++, *(bias->memory<cl::Image>()));
+      VLOG(3) << "set bias arg" << idx;
     }
     kernel->setArg(idx++, *(output->mutable_memory<cl::Image>()));
+    VLOG(3) << "set output arg" << idx;
     kernel->setArg(idx++, relux_max_limit);
+    VLOG(3) << "set relux max limit arg" << idx;
     kernel->setArg(idx++, activation_coefficient);
+    VLOG(3) << "set activation coefficient arg" << idx;
     kernel->setArg(idx++, static_cast<uint32_t>(input->dim(1)));
+    VLOG(3) << "set input dim 1 arg" << idx;
     kernel->setArg(idx++, static_cast<uint32_t>(input->dim(2)));
+    VLOG(3) << "set input dim 2 arg" << idx;
     kernel->setArg(idx++, static_cast<uint32_t>(input_channel_blocks));
+    VLOG(3) << "set input channel blocks arg" << idx;
     kernel->setArg(idx++, static_cast<uint32_t>(height));
+    VLOG(3) << "set height arg" << idx;
     kernel->setArg(idx++, static_cast<uint32_t>(width));
+    VLOG(3) << "set width arg" << idx;
     kernel->setArg(idx++, static_cast<uint32_t>(filter->dim(2)));
+    VLOG(3) << "set filter dim 2 arg" << idx;
     kernel->setArg(idx++, static_cast<uint32_t>(filter->dim(3)));
+    VLOG(3) << "set filter dim 3 arg" << idx;
     kernel->setArg(idx++, static_cast<uint32_t>(stride_h));
+    VLOG(3) << "set stride h arg" << idx;
     kernel->setArg(idx++, static_cast<uint32_t>(stride_w));
+    VLOG(3) << "set stride w arg" << idx;
     kernel->setArg(idx++, padding[0] / 2);
+    VLOG(3) << "set padding 0 arg" << idx;
     kernel->setArg(idx++, padding[1] / 2);
+    VLOG(3) << "set padding 1 arg" << idx;
     kernel->setArg(idx++, dilations[0]);
+    VLOG(3) << "set dilation 0 arg" << idx;
     kernel->setArg(idx++, dilations[1]);
+    VLOG(3) << "set dilation 1 arg" << idx;
     kernel->setArg(idx++, groups);
+    VLOG(3) << "set groups arg" << idx;
 
     *prev_input_shape = input->shape();
     VLOG(3) << "RESET ARGS SUCCESS";
@@ -187,14 +211,7 @@ MaceStatus GroupConv2dKernel::Compute(OpContext *context,
   VLOG(3) << "GroupConv2dKernel::Compute kernel_h = " << kernel_h << "";
   index_t kernel_w = filter->dim(3);
   VLOG(3) << "GroupConv2dKernel::Compute kernel_w = " << kernel_w << "";
-  //   if (dilations[0] > 1 && (strides[0] > 1 || kernel_h == 1)) {
-  //     LOG(WARNING) << "OpenCL conv2d kernel with "
-  //                  << "filter" << kernel_h << "x" << kernel_w << ","
-  //                  << " stride " << strides[0] << "x" << strides[1]
-  //                  << ",dilations " << dilations[0] << "x" << dilations[1]
-  //                  << " is not implemented yet.";
-  //     MACE_NOT_IMPLEMENTED;
-  //   }
+
   VLOG(3) << "GroupConv2dKernel::Compute 1";
   // Reshape output
   std::vector<index_t> output_shape(4);
