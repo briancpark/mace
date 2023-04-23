@@ -178,15 +178,13 @@ MaceStatus GroupConv2d(OpContext *context,
     VLOG(3) << "RESET ARGS SUCCESS";
   }
 
+  // TODO: confirm if lws and gws are correct
   std::string tuning_key = Concat(
       "group_conv2dgeneral_opencl_kernel", output->dim(0), output->dim(1),
       output->dim(2), output->dim(3), filter->dim(2), filter->dim(3));
-  //   std::vector<uint32_t> lws =
-  //       LocalWS(executor, gws, filter->dim(2) * filter->dim(3), *kwg_size);
-  //   MACE_RETURN_IF_ERROR(TuningOrRun3DKernel(executor, *kernel, tuning_key,
-  //   gws,
-  //                                            lws, context->future(),
-  //                                            context));
+  std::vector<uint32_t> lws = {kwg_size[0], 1, 1};
+  MACE_RETURN_IF_ERROR(TuningOrRun2DKernel(executor, *kernel, tuning_key, gws,
+                                           lws, context->future(), context));
 
   MACE_OUT_OF_RANGE_VALIDATION;
   return MaceStatus::MACE_SUCCESS;

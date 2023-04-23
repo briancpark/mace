@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "mace/utils/statistics.h"
+
 #include <algorithm>
-#include <numeric>
 #include <functional>
+#include <numeric>
 #include <set>
 
-#include "mace/utils/statistics.h"
 #include "mace/utils/logging.h"
 #include "mace/utils/string_util.h"
 
@@ -41,10 +42,18 @@ std::string MetricToString(const Metric metric) {
 std::string PaddingTypeToString(int padding_type) {
   std::stringstream stream;
   switch (padding_type) {
-    case 0: stream << "VALID"; break;
-    case 1: stream << "SAME"; break;
-    case 2: stream << "FULL"; break;
-    default: stream << padding_type; break;
+    case 0:
+      stream << "VALID";
+      break;
+    case 1:
+      stream << "SAME";
+      break;
+    case 2:
+      stream << "FULL";
+      break;
+    default:
+      stream << padding_type;
+      break;
   }
 
   return stream.str();
@@ -101,35 +110,33 @@ int64_t StatMACs(const std::string &op_type,
                  const std::vector<int64_t> &output_shape) {
   int64_t macs = 0;
   if (op_type == "Conv2D" || op_type == "Deconv2D") {
-    macs = output_shape[0] * output_shape[1] * output_shape[2]
-        * output_shape[3]
-        * filter_shape[2] * filter_shape[3] * filter_shape[1];
+    macs = output_shape[0] * output_shape[1] * output_shape[2] *
+           output_shape[3] * filter_shape[2] * filter_shape[3] *
+           filter_shape[1];
   } else if (op_type == "MatMul") {
-    macs = std::accumulate(output_shape.begin(),
-                           output_shape.end(),
-                           1,
-                           std::multiplies<int64_t>())
-        * filter_shape.back();
+    macs = std::accumulate(output_shape.begin(), output_shape.end(), 1,
+                           std::multiplies<int64_t>()) *
+           filter_shape.back();
   } else if (op_type == "DepthwiseConv2d") {
-    macs = output_shape[0] * output_shape[1] * output_shape[2]
-        * output_shape[3] * filter_shape[0] * filter_shape[2] * filter_shape[3];
+    macs = output_shape[0] * output_shape[1] * output_shape[2] *
+           output_shape[3] * filter_shape[0] * filter_shape[2] *
+           filter_shape[3];
   } else if (op_type == "DepthwiseDeconv2d") {
-    macs = output_shape[0] * output_shape[1] * output_shape[2]
-        * output_shape[3] * filter_shape[2] * filter_shape[3];
+    macs = output_shape[0] * output_shape[1] * output_shape[2] *
+           output_shape[3] * filter_shape[2] * filter_shape[3];
+  } else if (op_type == "GroupConv2d") {
+    macs = output_shape[0] * output_shape[1] * output_shape[2] *
+           output_shape[3] * filter_shape[2] * filter_shape[3] *
+           filter_shape[1] / filter_shape[0];
   } else if (op_type == "FullyConnected") {
     macs = output_shape[0] * std::accumulate(filter_shape.begin(),
-                                             filter_shape.end(),
-                                             1,
+                                             filter_shape.end(), 1,
                                              std::multiplies<int64_t>());
   } else if (op_type == "BatchNorm") {
-    macs = std::accumulate(output_shape.begin(),
-                           output_shape.end(),
-                           1,
+    macs = std::accumulate(output_shape.begin(), output_shape.end(), 1,
                            std::multiplies<int64_t>());
   } else if (op_type == "ResizeBilinear" || op_type == "ResizeBicubic") {
-    macs = 3 * std::accumulate(output_shape.begin(),
-                               output_shape.end(),
-                               1,
+    macs = 3 * std::accumulate(output_shape.begin(), output_shape.end(), 1,
                                std::multiplies<int64_t>());
   }
   return macs;
@@ -191,9 +198,9 @@ std::string OpStat::StatByMetric(const Metric metric,
   // generate string
   std::string title = "Sort by " + MetricToString(metric);
   const std::vector<std::string> header = {
-      "Op Type", "Start", "First", "Avg(ms)", "%", "cdf%", "GMACPS",
-      "Stride", "Pad", "Filter Shape", "Output Shape", "Dilation", "name"
-  };
+      "Op Type",      "Start",    "First",  "Avg(ms)", "%",
+      "cdf%",         "GMACPS",   "Stride", "Pad",     "Filter Shape",
+      "Output Shape", "Dilation", "name"};
   std::vector<std::vector<std::string>> data;
   int count = std::min(top_limit, static_cast<int>(records.size()));
   if (top_limit <= 0) count = static_cast<int>(records.size());
@@ -213,8 +220,9 @@ std::string OpStat::StatByMetric(const Metric metric,
     tuple.push_back(
         FloatToString(accumulate_time * 100.f / total_time_.sum(), 3));
     tuple.push_back(FloatToString(
-        record.macs < 1e-6 ? record.macs :
-        (record.macs * 1e-3) / record.rel_end.avg(), 3));
+        record.macs < 1e-6 ? record.macs
+                           : (record.macs * 1e-3) / record.rel_end.avg(),
+        3));
     tuple.push_back(VectorToString<int>(record.args.strides));
     if (record.args.padding_type != -1) {
       tuple.push_back(PaddingTypeToString(record.args.padding_type));
@@ -244,25 +252,22 @@ std::string OpStat::StatByOpType() const {
   for (auto &record : records_) {
     std::string op_type = record.second.type;
     op_types_set.insert(op_type);
-
     type_time_map[op_type] += record.second.rel_end.sum() / round;
     type_macs_map[op_type] += record.second.macs;
     total_time += record.second.rel_end.sum() / round;
     type_count_map[op_type] += 1;
     type_called_times_map[op_type] += record.second.called_times / round;
   }
-  std::vector<std::string> op_types(op_types_set.begin(),
-                                    op_types_set.end());
+  std::vector<std::string> op_types(op_types_set.begin(), op_types_set.end());
   std::sort(op_types.begin(), op_types.end(),
             [&](const std::string &lhs, const std::string &rhs) {
               return type_time_map[lhs] > type_time_map[rhs];
             });
 
   std::string title = "Stat by Op Type";
-  const std::vector<std::string> header = {
-      "Op Type", "Count", "Avg(ms)", "%", "cdf%", "MACs",
-      "GMACPS", "Called times"
-  };
+  const std::vector<std::string> header = {"Op Type", "Count",       "Avg(ms)",
+                                           "%",       "cdf%",        "MACs",
+                                           "GMACPS",  "Called times"};
 
   float cdf = 0.0f;
   std::vector<std::vector<std::string>> data;
@@ -278,9 +283,11 @@ std::string OpStat::StatByOpType() const {
     tuple.push_back(FloatToString(percentage, 3));
     tuple.push_back(FloatToString(cdf, 3));
     tuple.push_back(IntToString(type_macs_map[type]));
-    tuple.push_back(FloatToString(
-        type_macs_map[type] < 1e-6 ? type_macs_map[type] :
-        (type_macs_map[type] * 1e-3) / type_time_map[type], 3));
+    tuple.push_back(
+        FloatToString(type_macs_map[type] < 1e-6
+                          ? type_macs_map[type]
+                          : (type_macs_map[type] * 1e-3) / type_time_map[type],
+                      3));
     tuple.push_back(IntToString(type_called_times_map[type]));
     data.emplace_back(tuple);
   }
@@ -299,9 +306,8 @@ std::string OpStat::StatByMACs() const {
   }
 
   std::string title = "Stat by MACs(Multiply-Accumulation)";
-  const std::vector<std::string> header = {
-      "total", "round", "first(G/s)", "avg(G/s)", "std"
-  };
+  const std::vector<std::string> header = {"total", "round", "first(G/s)",
+                                           "avg(G/s)", "std"};
 
   std::vector<std::vector<std::string>> data;
   std::vector<std::string> tuple;
@@ -327,7 +333,7 @@ std::string OpStat::Summary() const {
 void OpStat::PrintStat() const {
   std::stringstream stream;
   if (!records_.empty()) {
-  // op stat by run order
+    // op stat by run order
     stream << StatByMetric(Metric::RUN_ORDER, 0) << std::endl;
     // top-10 op stat by time
     stream << StatByMetric(Metric::COMPUTATION_TIME, 10) << std::endl;
