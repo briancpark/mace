@@ -32,7 +32,6 @@
 #include "mace/ops/conv_pool_2d_base.h"
 #include "mace/ops/delegator/activation.h"
 #include "mace/ops/delegator/bias_add.h"
-// #include "mace/ops/delegator/conv_2d.h"
 #include "mace/ops/delegator/group_conv2d.h"
 #include "mace/ops/group_conv2d.h"
 #include "mace/utils/math.h"
@@ -60,7 +59,6 @@ class GroupConv2dOp<RuntimeType::RT_CPU, T> : public GroupConv2dOpBase {
             context->workspace(),
             MACE_DELEGATOR_KEY(
                 Activation, RuntimeType::RT_CPU, T, kCpuImplType),
-            /* Delegator copied from conv_2d.cc */
             delegator::ActivationParam(
                 ops::StringToActivationType(
                     Operation::GetOptionalArg<std::string>("activation",
@@ -76,26 +74,13 @@ class GroupConv2dOp<RuntimeType::RT_CPU, T> : public GroupConv2dOpBase {
             DelegatorParam())) {}
 
   MaceStatus Run(OpContext *context) override {
+    // TODO: (bcp) The naive implemenation does not work with the onnx file
+    // anymore because ops are fused with activations
     MACE_UNUSED(context);
-    // printf("BEGIN RUNNING GroupConv2d\n");
     const Tensor *input = this->Input(INPUT);
     const Tensor *filter = this->Input(FILTER);
     const Tensor *bias = this->InputSize() >= 3 ? this->Input(BIAS) : nullptr;
     Tensor *output = this->Output(OUTPUT);
-
-    // TODO: (bcp) DEBUGGING
-
-    // Print the input, filter, bias, and output shapes
-    // printf("input shape: %lu %lu %lu %lu\n", input->dim(0), input->dim(1),
-    //        input->dim(2), input->dim(3));
-    // printf("filter shape: %lu %lu %lu %lu\n", filter->dim(0), filter->dim(1),
-    //        filter->dim(2), filter->dim(3));
-    // printf("bias shape: %lu\n", bias->dim(0));
-    // printf("output shape: %lu %lu %lu %lu\n", output->dim(0), output->dim(1),
-    //        output->dim(2), output->dim(3));
-
-    // Print the format of the input, filter, bias, and output
-
 
     // print out the group size
     VLOG(3) << "group size: " << group_;
@@ -209,7 +194,6 @@ class GroupConv2dOp<RuntimeType::RT_CPU, T> : public GroupConv2dOpBase {
     return MaceStatus::MACE_SUCCESS;
   }
 
-
  private:
   std::unique_ptr<delegator::Activation> activation_delegator_;
   std::unique_ptr<delegator::BiasAdd> bias_add_delegator_;
@@ -235,11 +219,10 @@ class GroupConv2dOp<RuntimeType::RT_OPENCL, float> : public GroupConv2dOpBase {
     MemoryType mem_type;
     if (context->GetOpMemoryType() == MemoryType::GPU_IMAGE) {
       mem_type = MemoryType::GPU_IMAGE;
-      // TODO: support group conv2d with image
-      VLOG(1) << "IMAGEBUFF";
       kernel_ = make_unique<opencl::image::GroupConv2dKernel>();
     } else {
-      VLOG(1) << "IMAGEBUFFBUFF";
+      // TODO (bcp): support group conv2d with buffer (the ONNX files only
+      // require image)
       mem_type = MemoryType::GPU_BUFFER;
       kernel_ = make_unique<opencl::image::GroupConv2dKernel>();
       //   kernel_ = make_unique<opencl::buffer::GroupConv2dKernel>();
@@ -284,29 +267,13 @@ class GroupConv2dOp<RuntimeType::RT_OPENCL, float> : public GroupConv2dOpBase {
                                  BufferContentType::ARGUMENT, mem_type);
       MACE_CHECK(ret == MaceStatus::MACE_SUCCESS);
     }
-    VLOG(1) << "GCONV INIT DONE";
   }
 
   MaceStatus Run(OpContext *context) override {
-    VLOG(1) << "RUNNING GPU GCONV";
     const Tensor *input = this->Input(INPUT);
     const Tensor *filter = this->Input(FILTER);
     const Tensor *bias = this->InputSize() >= 3 ? this->Input(BIAS) : nullptr;
     Tensor *output = this->Output(OUTPUT);
-    // Print out the contents of the padding
-    // printout the size of the paddings
-    // print the filter shape, input shape, output shape
-    VLOG(1) << "Filter shape is " << filter->dim(0) << " " << filter->dim(1)
-            << " " << filter->dim(2) << " " << filter->dim(3);
-    VLOG(1) << "Input shape is " << input->dim(0) << " " << input->dim(1) << " "
-            << input->dim(2) << " " << input->dim(3);
-    VLOG(1) << "Output shape is " << output->dim(0) << " " << output->dim(1)
-            << " " << output->dim(2) << " " << output->dim(3);
-    VLOG(1) << "Paddings size is " << paddings_.size();
-    for (int i = 0; i < 2; i++) {
-      VLOG(1) << "Padding " << i << " is " << paddings_[i];
-    }
-    VLOG(1) << "RUNNING GPU GCONV INIT";
     return kernel_->Compute(
         context, input, filter, bias, strides_.data(), padding_type_, paddings_,
         dilations_.data(), activation_, relux_max_limit_,
