@@ -26,6 +26,7 @@ extern void RegisterDepthwiseConv2dDelegator(OpDelegatorRegistry *registry);
 extern void RegisterDepthwiseDeconv2dDelegator(OpDelegatorRegistry *registry);
 extern void RegisterGemmDelegator(OpDelegatorRegistry *registry);
 extern void RegisterGemvDelegator(OpDelegatorRegistry *registry);
+extern void RegisterGroupConv2dDelegator(OpDelegatorRegistry *registry);
 
 #ifdef MACE_ENABLE_QUANTIZE
 namespace q8 {
@@ -54,8 +55,7 @@ extern void RegisterDeconv2dK3x3Delegator(OpDelegatorRegistry *registry);
 extern void RegisterDeconv2dK4x4Delegator(OpDelegatorRegistry *registry);
 extern void RegisterDeconv2dGeneralDelegator(OpDelegatorRegistry *registry);
 
-extern void RegisterDepthwiseConv2dK3x3Delegator(
-    OpDelegatorRegistry *registry);
+extern void RegisterDepthwiseConv2dK3x3Delegator(OpDelegatorRegistry *registry);
 extern void RegisterDepthwiseDeconv2dK3x3Delegator(
     OpDelegatorRegistry *registry);
 extern void RegisterGroupDeconv2dK3x3Delegator(OpDelegatorRegistry *registry);
@@ -66,6 +66,8 @@ extern void RegisterDepthwiseDeconv2dGeneralDelegator(
     OpDelegatorRegistry *registry);
 extern void RegisterGroupDeconv2dGeneralDelegator(
     OpDelegatorRegistry *registry);
+
+extern void RegisterGroupConv2dK3x3Delegator(OpDelegatorRegistry *registry);
 
 extern void RegisterGemmDelegator(OpDelegatorRegistry *registry);
 extern void RegisterGemvDelegator(OpDelegatorRegistry *registry);
@@ -94,6 +96,7 @@ void RegisterAllOpDelegators(OpDelegatorRegistry *registry) {
   ref::RegisterDepthwiseDeconv2dDelegator(registry);
   ref::RegisterGemmDelegator(registry);
   ref::RegisterGemvDelegator(registry);
+  ref::RegisterGroupConv2dDelegator(registry);
 #ifdef MACE_ENABLE_QUANTIZE
   ref::q8::RegisterEltwiseDelegator(registry);
   ref::q8::RegisterGemvDelegator(registry);
@@ -127,6 +130,7 @@ void RegisterAllOpDelegators(OpDelegatorRegistry *registry) {
 
   arm::RegisterGemmDelegator(registry);
   arm::RegisterGemvDelegator(registry);
+  arm::RegisterGroupConv2dK3x3Delegator(registry);
 #ifdef MACE_ENABLE_FP16
   arm::RegisterFP16DepthwiseConv2dK3x3Delegator(registry);
   arm::RegisterFP16GemmDelegator(registry);

@@ -26,20 +26,21 @@
 namespace mace {
 namespace ops {
 
-// enum ConvType {
-//   K1x1,
-//   K1x7S1,
-//   K7x1S1,
-//   K1x15S1,
-//   K15x1S1,
-//   K3x3S1,
-//   K3x3S2,
-//   K3x3Winograd,
-//   K5x5S1,
-//   K7x7S1,
-//   K7x7S2,
-//   K7x7S3,
-// };
+// Copied from Conv2d.h, but left out unimplemted conv types for RegNet model
+enum GroupConvType {
+  //   K1x1,
+  //   K1x7S1,
+  //   K7x1S1,
+  //   K1x15S1,
+  //   K15x1S1,
+  K3x3S1,
+  K3x3S2,
+  //   K3x3Winograd,
+  //   K5x5S1,
+  //   K7x7S1,
+  //   K7x7S2,
+  //   K7x7S3,
+};
 
 namespace delegator {
 
