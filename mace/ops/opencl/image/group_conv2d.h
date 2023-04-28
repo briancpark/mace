@@ -11,8 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef MACE_OPS_OPENCL_IMAGE_CONV_2D_H_
-#define MACE_OPS_OPENCL_IMAGE_CONV_2D_H_
+#ifndef MACE_OPS_OPENCL_IMAGE_GROUP_CONV2D_H_
+#define MACE_OPS_OPENCL_IMAGE_GROUP_CONV2D_H_
 
 #include <memory>
 #include <vector>
@@ -26,6 +26,25 @@ namespace mace {
 namespace ops {
 namespace opencl {
 namespace image {
+
+// TODO: (bcp) 1x1 and Winograd microkernels are not implmented yet
+
+extern MaceStatus GroupConv2dK3x3(OpContext *context,
+                                  cl::Kernel *kernel,
+                                  const Tensor *input,
+                                  const Tensor *filter,
+                                  const Tensor *bias,
+                                  const int stride_h,
+                                  const int stride_w,
+                                  const int *padding,
+                                  const int *dilations,
+                                  const ActivationType activation,
+                                  const float relux_max_limit,
+                                  const float activation_coefficient,
+                                  std::vector<index_t> *prev_input_shape,
+                                  Tensor *output,
+                                  uint32_t *kwg_size,
+                                  const int groups);
 
 extern MaceStatus GroupConv2d(OpContext *context,
                               cl::Kernel *kernel,
@@ -46,8 +65,7 @@ extern MaceStatus GroupConv2d(OpContext *context,
 
 class GroupConv2dKernel : public OpenCLGroupConv2dKernel {
  public:
-  // TODO: (bcp) Wheter or not to really implement winograd should be determined
-  // later
+  // TODO: (bcp) Winograd is not implemented yet for group conv2d
   bool CheckUseWinograd(OpenclExecutor *executor,
                         const std::vector<index_t> &filter_shape,
                         const std::vector<index_t> &output_shape,
@@ -81,4 +99,4 @@ class GroupConv2dKernel : public OpenCLGroupConv2dKernel {
 }  // namespace ops
 }  // namespace mace
 
-#endif  // MACE_OPS_OPENCL_IMAGE_CONV_2D_H_
+#endif  // MACE_OPS_OPENCL_IMAGE_GROUP_CONV2D_H_

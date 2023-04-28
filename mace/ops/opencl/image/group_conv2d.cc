@@ -63,132 +63,6 @@ bool GroupConv2dKernel::CheckUseWinograd(
   return check_opencl_limit(2);
 }
 
-MaceStatus GroupConv2d(OpContext *context,
-                       cl::Kernel *kernel,
-                       const Tensor *input,
-                       const Tensor *filter,
-                       const Tensor *bias,
-                       const int stride_h,
-                       const int stride_w,
-                       const int *padding,
-                       const int *dilations,
-                       const ActivationType activation,
-                       const float relux_max_limit,
-                       const float activation_coefficient,
-                       std::vector<index_t> *prev_input_shape,
-                       Tensor *output,
-                       uint32_t *kwg_size,
-                       const int groups) {
-  VLOG(3) << "GroupConv2d OPENCL OP";  // Print out the kernel
-  VLOG(3) << "kernel: " << kernel;
-  const index_t batch = output->dim(0);
-  const index_t height = output->dim(1);
-  const index_t width = output->dim(2);
-  const index_t channels = output->dim(3);
-  const index_t input_channels = input->dim(3);
-
-  const index_t channel_blocks = RoundUpDiv4(channels);
-  const index_t input_channel_blocks = RoundUpDiv4(input_channels);
-  const index_t width_blocks = RoundUpDiv4(width);
-  VLOG(3) << "groups: " << groups;
-
-  auto executor = OpenclRuntime::Get(context)->GetOpenclExecutor();
-  MACE_OUT_OF_RANGE_DEFINITION;
-
-  if (kernel->get() == nullptr) {
-    VLOG(3) << "kernel is null";
-    std::set<std::string> built_options;
-    MACE_OUT_OF_RANGE_CONFIG;
-    MACE_NON_UNIFORM_WG_CONFIG;
-    std::string kernel_name = MACE_OBFUSCATE_SYMBOL("group_conv2d");
-    built_options.emplace("-Dgroup_conv2d=" + kernel_name);
-    built_options.emplace("-DDATA_TYPE=" + DtToCLDt(DT_FLOAT));
-    built_options.emplace("-DCMD_DATA_TYPE=" + DtToCLCMDDt(DT_FLOAT));
-    built_options.emplace(bias != nullptr ? "-DBIAS" : "");
-    common::utils::FillBuiltOptions(&built_options, activation);
-
-    VLOG(3) << "time to execute";
-
-    MACE_RETURN_IF_ERROR(executor->BuildKernel("group_conv2d", kernel_name,
-                                               built_options, kernel));
-    VLOG(3) << "built kernel successfully";
-    *kwg_size =
-        static_cast<uint32_t>(executor->GetKernelMaxWorkGroupSize(*kernel));
-  }
-
-  VLOG(3) << "REGISTERED";
-  const uint32_t gws[3] = {static_cast<uint32_t>(channel_blocks),
-                           static_cast<uint32_t>(width_blocks),
-                           static_cast<uint32_t>(height * batch)};
-  MACE_OUT_OF_RANGE_INIT(*kernel);
-
-  // Support different input size
-  if (IsResetArgsNeeded(context, *prev_input_shape, input->shape())) {
-    VLOG(3) << "RESET ARGS";
-    uint32_t idx = 0;
-    VLOG(3) << "start of arg idx" << idx;
-    MACE_OUT_OF_RANGE_SET_ARGS(*kernel);
-    VLOG(3) << "out of range set args" << idx;
-    MACE_SET_3D_GWS_ARGS(*kernel, gws);
-    VLOG(3) << "set 3d gws args" << idx;
-    kernel->setArg(idx++, *(input->memory<cl::Image>()));
-    VLOG(3) << "set input arg" << idx;
-    kernel->setArg(idx++, *(filter->memory<cl::Image>()));
-    VLOG(3) << "set filter arg" << idx;
-    if (bias != nullptr) {
-      kernel->setArg(idx++, *(bias->memory<cl::Image>()));
-      VLOG(3) << "set bias arg" << idx;
-    }
-    kernel->setArg(idx++, *(output->mutable_memory<cl::Image>()));
-    VLOG(3) << "set output arg" << idx;
-    kernel->setArg(idx++, relux_max_limit);
-    VLOG(3) << "set relux max limit arg" << idx;
-    kernel->setArg(idx++, activation_coefficient);
-    VLOG(3) << "set activation coefficient arg" << idx;
-    kernel->setArg(idx++, static_cast<uint32_t>(input->dim(1)));
-    VLOG(3) << "set input dim 1 arg" << idx;
-    kernel->setArg(idx++, static_cast<uint32_t>(input->dim(2)));
-    VLOG(3) << "set input dim 2 arg" << idx;
-    kernel->setArg(idx++, static_cast<uint32_t>(input_channel_blocks));
-    VLOG(3) << "set input channel blocks arg" << idx;
-    kernel->setArg(idx++, static_cast<uint32_t>(height));
-    VLOG(3) << "set height arg" << idx;
-    kernel->setArg(idx++, static_cast<uint32_t>(width));
-    VLOG(3) << "set width arg" << idx;
-    kernel->setArg(idx++, static_cast<uint32_t>(filter->dim(2)));
-    VLOG(3) << "set filter dim 2 arg" << idx;
-    kernel->setArg(idx++, static_cast<uint32_t>(filter->dim(3)));
-    VLOG(3) << "set filter dim 3 arg" << idx;
-    kernel->setArg(idx++, static_cast<uint32_t>(stride_h));
-    VLOG(3) << "set stride h arg" << idx;
-    kernel->setArg(idx++, static_cast<uint32_t>(stride_w));
-    VLOG(3) << "set stride w arg" << idx;
-    kernel->setArg(idx++, padding[0] / 2);
-    VLOG(3) << "set padding 0 arg" << idx;
-    kernel->setArg(idx++, padding[1] / 2);
-    VLOG(3) << "set padding 1 arg" << idx;
-    kernel->setArg(idx++, dilations[0]);
-    VLOG(3) << "set dilation 0 arg" << idx;
-    kernel->setArg(idx++, dilations[1]);
-    VLOG(3) << "set dilation 1 arg" << idx;
-    kernel->setArg(idx++, groups);
-    VLOG(3) << "set groups arg" << idx;
-
-    *prev_input_shape = input->shape();
-    VLOG(3) << "RESET ARGS SUCCESS";
-  }
-
-  // TODO: confirm if lws and gws are correct
-  std::string tuning_key = Concat(
-      "group_conv2dgeneral_opencl_kernel", output->dim(0), output->dim(1),
-      output->dim(2), output->dim(3), filter->dim(2), filter->dim(3));
-  std::vector<uint32_t> lws = {kwg_size[0], 1, 1};
-  MACE_RETURN_IF_ERROR(TuningOrRun2DKernel(executor, *kernel, tuning_key, gws,
-                                           lws, context->future(), context));
-
-  MACE_OUT_OF_RANGE_VALIDATION;
-  return MaceStatus::MACE_SUCCESS;
-}
 
 MaceStatus GroupConv2dKernel::Compute(OpContext *context,
                                       const Tensor *input,
@@ -204,98 +78,50 @@ MaceStatus GroupConv2dKernel::Compute(OpContext *context,
                                       const int wino_blk_size,
                                       const int groups,
                                       Tensor *output) {
-  VLOG(3) << "GroupConv2dKernel::Compute";
   index_t kernel_h = filter->dim(2);
-  VLOG(3) << "GroupConv2dKernel::Compute kernel_h = " << kernel_h << "";
   index_t kernel_w = filter->dim(3);
-  VLOG(3) << "GroupConv2dKernel::Compute kernel_w = " << kernel_w << "";
 
-  VLOG(3) << "GroupConv2dKernel::Compute 1";
   // Reshape output
   std::vector<index_t> output_shape(4);
   std::vector<int> paddings(2);
   if (padding_data.empty()) {
-    VLOG(3) << "Padding data is empty";
     ops::CalcNHWCPaddingAndOutputSize(
         input->shape().data(), filter->shape().data(), dilations, strides,
         padding_type, output_shape.data(), paddings.data());
   } else {
-    VLOG(3) << "Padding data is not empty";
     paddings = padding_data;
-    // Print the contents of padding_data.data()
-    // Get the size of the array
-    VLOG(3) << "padding_data.size() (kernekl) = " << padding_data.size();
-    // for (int i = 0; i < 2; i++) {
-    //   VLOG(3) << "padding_data.data() = " << padding_data.data()[i];
-    // }
-    // CalcOutputSize(input->shape().data(), filter->shape().data(),
-    //                padding_data.data(), dilations, strides, RoundType::FLOOR,
-    //                output_shape.data());
-    // Calculate the outputsize given that this is a group convolution,
-    // Where the input is split into groups, and each group is convolved
-    // separately.
-    // The output is then concatenated.
-    // Print the outputshape
-    // Output is in the form of [batch, output_height, output_width,
-    // output_channels
-
-    output_shape[0] = input->dim(0);
-    output_shape[1] = (input->dim(2) + paddings[1] -
-                       dilations[1] * (filter->dim(2) - 1) - 1) /
-                          strides[1] +
-                      1;
-    output_shape[2] = (input->dim(2) + paddings[1] -
-                       dilations[1] * (filter->dim(2) - 1) - 1) /
-                          strides[1] +
-                      1;
-    output_shape[3] = input->dim(3);
-
-    // Print the outputshape
-    for (int i = 0; i < 4; i++) {
-      VLOG(3) << "output_shape.data() = " << output_shape.data()[i];
-    }
+    CalcOutputSize(input->shape().data(), filter->shape().data(),
+                   padding_data.data(), dilations, strides, RoundType::FLOOR,
+                   output_shape.data());
   }
-  VLOG(3) << "GroupConv2dKernel::Compute 2";
+
   MACE_RETURN_IF_ERROR(output->Resize(output_shape));
-  VLOG(3) << "GroupConv2dKernel::Compute 3";
-  std::function<MaceStatus()> conv_func;
-  VLOG(3) << "GROUOP_CONV2D";
+
+  std::function<MaceStatus()> groupconv_func;
+
   if (wino_blk_size) {
-    VLOG(3) << "Use winograd kernel";
+    VLOG(3) << "wino_blk_size is not 0";
+    // Winograd for group conv2d not implemented yet
+    // return not supported error
+    MACE_NOT_IMPLEMENTED;
+    // Group Conv for 1x1 not implemented yet
+    //   } else if (kernel_h == 1 && kernel_w == 1) {
+  } else if (kernel_h == 3 && kernel_w == 3) {
+    groupconv_func = [&]() -> MaceStatus {
+      return GroupConv2dK3x3(context, &kernel_, input, filter, bias, strides[0],
+                             strides[1], paddings.data(), dilations, activation,
+                             relux_max_limit, activation_coefficient,
+                             &input_shape_, output, &kwg_size_, groups);
+    };
+  } else {
+    groupconv_func = [&]() -> MaceStatus {
+      return GroupConv2d(context, &kernel_, input, filter, bias, strides[0],
+                         strides[1], paddings.data(), dilations, activation,
+                         relux_max_limit, activation_coefficient, &input_shape_,
+                         output, &kwg_size_, groups);
+    };
   }
-
-  //   if (relux_max_limit > 0) {
-  //     VLOG(3) << "Use ReluX kernel";
-  //   }
-  //   if (bias != nullptr) {
-  //     VLOG(3) << "Use bias kernel";
-  //   }
-  //   if (activation == ActivationType::NOOP) {
-  //     VLOG(3) << "Use no activation kernel";
-  //   }
-  //   if (activation_coefficient != 1) {
-  //     VLOG(3) << "Use activation coefficient kernel";
-  //   }
-  //   if (context != nullptr) {
-  //     VLOG(3) << "Use context kernel";
-  //   }
-  //   if (kwg_size_ != 0) {
-  //     VLOG(3) << "Use kwg_size kernel";
-  //   }
-  //   Conv2d, which this is copied from, is implmeentedn in conv2d_general
-
-  // TODO: (bcp) If I happen to add more microkernels, remember to add kernel_
-  //   to kernel_[i] and kwg_size_ to kwg_size_[i] conv_func = [&]() ->
-  VLOG(3) << "GroupConv2dKernel::Compute 4";
-  conv_func = [&]() -> MaceStatus {
-    return GroupConv2d(context, &kernel_, input, filter, bias, strides[0],
-                       strides[1], paddings.data(), dilations, activation,
-                       relux_max_limit, activation_coefficient, &input_shape_,
-                       output, &kwg_size_, groups);
-  };
-  VLOG(3) << "GroupConv2dKernel::Compute 5";
-  return conv_func();
-  //   return MaceStatus::MACE_SUCCESS;
+  return groupconv_func();
 }
 
 }  // namespace image
