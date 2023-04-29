@@ -33,7 +33,7 @@ class GroupConv2dK3x3S1 : public GroupConv2dKMxN<T> {
       : GroupConv2dKMxN<T>(param, 2, 4) {}
   virtual ~GroupConv2dK3x3S1() {}
 
-  MaceStatus DoCompute(const ConvComputeParam &p,
+  MaceStatus DoCompute(const GroupConvComputeParam &p,
                        const T *filter,
                        const T *input_data,
                        T *output_data) override;
@@ -46,7 +46,7 @@ class GroupConv2dK3x3S2 : public GroupConv2dKMxN<T> {
       : GroupConv2dKMxN<T>(param, 1, 4) {}
   virtual ~GroupConv2dK3x3S2() {}
 
-  MaceStatus DoCompute(const ConvComputeParam &p,
+  MaceStatus DoCompute(const GroupConvComputeParam &p,
                        const T *filter,
                        const T *input_data,
                        T *output_data) override;

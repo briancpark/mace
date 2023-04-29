@@ -243,7 +243,7 @@ void GroupConv2dBase::UnPadOutput(const Tensor &src, Tensor *dst) {
   }      // b
 }
 
-ConvComputeParam GroupConv2dBase::PreWorkAndGetConv2DParam(
+GroupConvComputeParam GroupConv2dBase::PreWorkAndGetConv2DParam(
     const OpContext *context, const Tensor *in_tensor, Tensor *out_tensor) {
   auto &in_shape = in_tensor->shape();
   auto &out_shape = out_tensor->shape();
@@ -261,11 +261,14 @@ ConvComputeParam GroupConv2dBase::PreWorkAndGetConv2DParam(
   const index_t in_batch_size = in_channels * in_image_size;
   const index_t out_batch_size = out_channels * out_image_size;
 
+  const index_t groups = group_;
+
   utils::ThreadPool &thread_pool = context->runtime()->thread_pool();
 
-  return ConvComputeParam(batch, in_channels, in_height, in_width, out_channels,
-                          out_height, out_width, in_image_size, out_image_size,
-                          in_batch_size, out_batch_size, &thread_pool);
+  return GroupConvComputeParam(batch, in_channels, in_height, in_width,
+                               out_channels, out_height, out_width,
+                               in_image_size, out_image_size, in_batch_size,
+                               out_batch_size, groups, &thread_pool);
 }
 
 

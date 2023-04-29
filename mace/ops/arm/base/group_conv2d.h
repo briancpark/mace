@@ -29,7 +29,7 @@ namespace mace {
 namespace ops {
 namespace arm {
 
-struct ConvComputeParam {
+struct GroupConvComputeParam {
   const index_t batch;
   const index_t in_channels;
   const index_t in_height;
@@ -43,20 +43,23 @@ struct ConvComputeParam {
   const index_t in_batch_size;
   const index_t out_batch_size;
 
+  const index_t group_size;
+
   utils::ThreadPool &thread_pool;
 
-  ConvComputeParam(const index_t b,
-                   const index_t in_c,
-                   const index_t in_h,
-                   const index_t in_w,
-                   const index_t out_c,
-                   const index_t out_h,
-                   const index_t out_w,
-                   const index_t in_size,
-                   const index_t out_size,
-                   const index_t in_b_size,
-                   const index_t out_b_size,
-                   utils::ThreadPool *thrd_pool)
+  GroupConvComputeParam(const index_t b,
+                        const index_t in_c,
+                        const index_t in_h,
+                        const index_t in_w,
+                        const index_t out_c,
+                        const index_t out_h,
+                        const index_t out_w,
+                        const index_t in_size,
+                        const index_t out_size,
+                        const index_t in_b_size,
+                        const index_t out_b_size,
+                        const index_t groups,
+                        utils::ThreadPool *thrd_pool)
       : batch(b),
         in_channels(in_c),
         in_height(in_h),
@@ -68,55 +71,8 @@ struct ConvComputeParam {
         out_image_size(out_size),
         in_batch_size(in_b_size),
         out_batch_size(out_b_size),
+        group_size(groups),
         thread_pool(*thrd_pool) {}
-};
-
-struct DepthwiseConvComputeParam : public ConvComputeParam {
-  const int pad_top;
-  const int pad_left;
-  const index_t multiplier;
-  const index_t valid_h_start;
-  const index_t valid_h_stop;
-  const index_t valid_w_start;
-  const index_t valid_w_stop;
-  DepthwiseConvComputeParam(const index_t b,
-                            const index_t in_c,
-                            const index_t in_h,
-                            const index_t in_w,
-                            const index_t out_c,
-                            const index_t out_h,
-                            const index_t out_w,
-                            const index_t in_size,
-                            const index_t out_size,
-                            const index_t in_b_size,
-                            const index_t out_b_size,
-                            utils::ThreadPool *thrd_pool,
-                            const int pad_top_data,
-                            const int pad_left_data,
-                            const index_t multiplier_data,
-                            const index_t valid_height_start,
-                            const index_t valid_height_stop,
-                            const index_t valid_width_start,
-                            const index_t valid_width_stop)
-      : ConvComputeParam(b,
-                         in_c,
-                         in_h,
-                         in_w,
-                         out_c,
-                         out_h,
-                         out_w,
-                         in_size,
-                         out_size,
-                         in_b_size,
-                         out_b_size,
-                         thrd_pool),
-        pad_top(pad_top_data),
-        pad_left(pad_left_data),
-        multiplier(multiplier_data),
-        valid_h_start(valid_height_start),
-        valid_h_stop(valid_height_stop),
-        valid_w_start(valid_width_start),
-        valid_w_stop(valid_width_stop) {}
 };
 
 class GroupConv2dBase : public delegator::GroupConv2d {
@@ -161,14 +117,9 @@ class GroupConv2dBase : public delegator::GroupConv2d {
                 Tensor *dst);
   void UnPadOutput(const Tensor &src, Tensor *dst);
 
-  ConvComputeParam PreWorkAndGetConv2DParam(const OpContext *context,
-                                            const Tensor *in_tensor,
-                                            Tensor *out_tensor);
-  DepthwiseConvComputeParam PreWorkAndGetDepthwiseConv2DParam(
-      const OpContext *context,
-      const Tensor *input,
-      const Tensor *filter,
-      Tensor *output);
+  GroupConvComputeParam PreWorkAndGetConv2DParam(const OpContext *context,
+                                                 const Tensor *in_tensor,
+                                                 Tensor *out_tensor);
 
  private:
   int type_size_;

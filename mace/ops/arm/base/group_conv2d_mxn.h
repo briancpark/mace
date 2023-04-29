@@ -61,7 +61,7 @@ class GroupConv2dKMxN : public GroupConv2dBase {
     const T *input_data = in_tensor->data<T>();
     T *output_data = out_tensor->mutable_data<T>();
 
-    const ConvComputeParam p =
+    const GroupConvComputeParam p =
         PreWorkAndGetConv2DParam(context, in_tensor, out_tensor);
 
     DoCompute(p, filter_data, input_data, output_data);
@@ -70,7 +70,7 @@ class GroupConv2dKMxN : public GroupConv2dBase {
     return MaceStatus::MACE_SUCCESS;
   }
 
-  virtual MaceStatus DoCompute(const ConvComputeParam &p,
+  virtual MaceStatus DoCompute(const GroupConvComputeParam &p,
                                const T *filter,
                                const T *input_data,
                                T *output_data) = 0;

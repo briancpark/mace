@@ -25,7 +25,7 @@ namespace ops {
 namespace arm {
 
 template <>
-MaceStatus GroupConv2dK3x3S1<float>::DoCompute(const ConvComputeParam &p,
+MaceStatus GroupConv2dK3x3S1<float>::DoCompute(const GroupConvComputeParam &p,
                                                const float *filter_data,
                                                const float *input_data,
                                                float *output_data) {
@@ -297,7 +297,7 @@ MaceStatus GroupConv2dK3x3S1<float>::DoCompute(const ConvComputeParam &p,
 }
 
 template <>
-MaceStatus GroupConv2dK3x3S2<float>::DoCompute(const ConvComputeParam &p,
+MaceStatus GroupConv2dK3x3S2<float>::DoCompute(const GroupConvComputeParam &p,
                                                const float *filter_data,
                                                const float *input_data,
                                                float *output_data) {
@@ -320,11 +320,11 @@ MaceStatus GroupConv2dK3x3S2<float>::DoCompute(const ConvComputeParam &p,
   //                   output_data + b * p.out_batch_size + m *
   //                   p.out_image_size;
 
-  // #if defined(__aarch64__)
   //               // load filter (1 outch x 3 height x 3 width):
-  //               vf_outch_height float32x4_t vf00, vf01, vf02; vf00 =
-  //               vld1q_f32(filter_ptr); vf01 = vld1q_f32(filter_ptr + 3); vf02
-  //               = vld1q_f32(filter_ptr + 5);
+  //               vf_outch_height float32x4_t vf00, vf01, vf02;
+  //               vf00 = vld1q_f32(filter_ptr);
+  //               vf01 = vld1q_f32(filter_ptr + 3);
+  //               vf02 = vld1q_f32(filter_ptr + 5);
 
   //               for (index_t h = 0; h < p.out_height; ++h) {
   //                 for (index_t w = 0; w + 3 < p.out_width; w += 4) {
@@ -344,13 +344,14 @@ MaceStatus GroupConv2dK3x3S2<float>::DoCompute(const ConvComputeParam &p,
   //                   index_t in_w = w * 2;
   //                   index_t in_offset = in_h * p.in_width + in_w;
   //                   vi0 = vld2q_f32(in_base + in_offset);  //
-  //                   [0.2.4.6, 1.3.5.7] vi1 = vld2q_f32(in_base + in_offset +
-  //                   p.in_width); vi2 = vld2q_f32(in_base + in_offset + 2 *
-  //                   p.in_width);
+  //                   [ 0.2.4.6, 1.3.5.7 ] vi1 =
+  //                       vld2q_f32(in_base + in_offset + p.in_width);
+  //                   vi2 = vld2q_f32(in_base + in_offset + 2 * p.in_width);
 
   //                   vi0n = vld1q_f32(in_base + in_offset + 8);  //
-  //                   [8.9.10.11] vi1n = vld1q_f32(in_base + in_offset +
-  //                   p.in_width + 8); vi2n = (float32x4_t){
+  //                   [8.9.10.11] vi1n =
+  //                       vld1q_f32(in_base + in_offset + p.in_width + 8);
+  //                   vi2n = (float32x4_t){
   //                       (in_base + in_offset + 2 * p.in_width + 8)[0], 0.0,
   //                       0.0, 0.0};
 
@@ -382,14 +383,37 @@ MaceStatus GroupConv2dK3x3S2<float>::DoCompute(const ConvComputeParam &p,
   //                   vst1q_f32(out_base + out_offset, vo);
   //                 }  // w
   //               }    // h
-  // #else              // arm v7
+  //             }      // c
+  //           }        // m
+  //         }          // b
+  //       },
+  //       0, p.batch, 1, 0, p.out_channels, 1);
+
+  //   p.thread_pool.Compute2D(
+  //       [=](index_t start0, index_t end0, index_t step0, index_t start1,
+  //           index_t end1, index_t step1) {
+  //         index_t groups = p.out_channels / p.out_channels_per_group;
+  //         for (index_t b = start0; b < end0; b += step0) {
+  //           for (index_t g = 0; g < groups; ++g) {
+  //             for (index_t cg = 0; cg < p.out_channels_per_group; ++cg) {
+  //               const float *in_base =
+  //                   input_data + b * p.in_batch_size +
+  //                   g * p.in_channels_per_group * p.in_image_size +
+  //                   cg * p.in_image_size;
+  //               const float *filter_ptr =
+  //                   filter_data +
+  //                   g * p.out_channels_per_group * p.in_channels_per_group *
+  //                   9 + cg * 9;
+  //               float *out_base =
+  //                   output_data + b * p.out_batch_size +
+  //                   g * p.out_channels_per_group * p.out_image_size +
+  //                   cg * p.out_image_size;
+
   //               // load filter (1 outch x 3 height x 3 width):
-  //               vf_outch_height float32x2_t vf01, vf23, vf45, vf67, vf78;
-  //               vf01 = vld1_f32(filter_ptr);
-  //               vf23 = vld1_f32(filter_ptr + 2);
-  //               vf45 = vld1_f32(filter_ptr + 4);
-  //               vf67 = vld1_f32(filter_ptr + 6);
-  //               vf78 = vld1_f32(filter_ptr + 7);
+  //               vf_outch_height float32x4_t vf00, vf01, vf02;
+  //               vf00 = vld1q_f32(filter_ptr);
+  //               vf01 = vld1q_f32(filter_ptr + 3);
+  //               vf02 = vld1q_f32(filter_ptr + 5);
 
   //               for (index_t h = 0; h < p.out_height; ++h) {
   //                 for (index_t w = 0; w + 3 < p.out_width; w += 4) {
@@ -409,14 +433,16 @@ MaceStatus GroupConv2dK3x3S2<float>::DoCompute(const ConvComputeParam &p,
   //                   index_t in_w = w * 2;
   //                   index_t in_offset = in_h * p.in_width + in_w;
   //                   vi0 = vld2q_f32(in_base + in_offset);  //
-  //                   [0.2.4.6, 1.3.5.7] vi1 = vld2q_f32(in_base + in_offset +
-  //                   p.in_width); vi2 = vld2q_f32(in_base + in_offset + 2 *
-  //                   p.in_width);
+  //                   [ 0.2.4.6, 1.3.5.7 ] vi1 =
+  //                       vld2q_f32(in_base + in_offset + p.in_width);
+  //                   vi2 = vld2q_f32(in_base + in_offset + 2 * p.in_width);
 
   //                   vi0n = vld1q_f32(in_base + in_offset + 8);  //
-  //                   [8.9.10.11] vi1n = vld1q_f32(in_base + in_offset +
-  //                   p.in_width + 8); vi2n = vld1q_f32(in_base + in_offset + 2
-  //                   * p.in_width + 8);
+  //                   [8.9.10.11] vi1n =
+  //                       vld1q_f32(in_base + in_offset + p.in_width + 8);
+  //                   vi2n = (float32x4_t){
+  //                       (in_base + in_offset + 2 * p.in_width + 8)[0], 0.0,
+  //                       0.0, 0.0};
 
   //                   // load ouptut
   //                   index_t out_offset = h * p.out_width + w;
@@ -432,26 +458,39 @@ MaceStatus GroupConv2dK3x3S2<float>::DoCompute(const ConvComputeParam &p,
   //                   vi21 = vi2.val[1];
   //                   vi22 = vextq_f32(vi20, vi2n, 1);
 
-  //                   // outch 0, height 0
-  //                   vo = vmlaq_lane_f32(vo, vi00, vf01, 0);
-  //                   vo = vmlaq_lane_f32(vo, vi01, vf01, 1);
-  //                   vo = vmlaq_lane_f32(vo, vi02, vf23, 0);
-  //                   vo = vmlaq_lane_f32(vo, vi10, vf23, 1);
-  //                   vo = vmlaq_lane_f32(vo, vi11, vf45, 0);
-  //                   vo = vmlaq_lane_f32(vo, vi12, vf45, 1);
-  //                   vo = vmlaq_lane_f32(vo, vi20, vf67, 0);
-  //                   vo = vmlaq_lane_f32(vo, vi21, vf67, 1);
-  //                   vo = vmlaq_lane_f32(vo, vi22, vf78, 1);
+  //                   // calculate the group index of the output channel (m)
+  //                   index_t m = g * p.out_channels_per_group + cg;
+
+  //                   // calculate the offset for the filter data for the
+  //                   current
+  //                   // group and channel
+  //                   index_t filter_offset =
+  //                       m * p.in_channels_per_group * 9 + cg * 9;
+
+  //                   // load filter for the current group and channel
+  //                   vf00 = vld1q_f32(filter_ptr + filter_offset);
+  //                   vf01 = vld1q_f32(filter_ptr + filter_offset + 3);
+  //                   vf02 = vld1q_f32(filter_ptr + filter_offset + 5);
+
+  //                   // perform convolution
+  //                   vo = vfmaq_laneq_f32(vo, vi00, vf00, 0);
+  //                   vo = vfmaq_laneq_f32(vo, vi01, vf00, 1);
+  //                   vo = vfmaq_laneq_f32(vo, vi02, vf00, 2);
+  //                   vo = vfmaq_laneq_f32(vo, vi10, vf01, 0);
+  //                   vo = vfmaq_laneq_f32(vo, vi11, vf01, 1);
+  //                   vo = vfmaq_laneq_f32(vo, vi12, vf01, 2);
+  //                   vo = vfmaq_laneq_f32(vo, vi20, vf02, 1);
+  //                   vo = vfmaq_laneq_f32(vo, vi21, vf02, 2);
+  //                   vo = vfmaq_laneq_f32(vo, vi22, vf02, 3);
 
   //                   vst1q_f32(out_base + out_offset, vo);
   //                 }  // w
   //               }    // h
-  // #endif
-  //             }  // c
-  //           }    // m
-  //         }      // b
+  //             }      // cg
+  //           }        // g
+  //         }          // b
   //       },
-  //       0, p.batch, 1, 0, p.out_channels, 1);
+  //       0, p.batch, 1, 0, p.groups, 1);
 
   return MaceStatus::MACE_SUCCESS;
 }
