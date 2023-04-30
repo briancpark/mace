@@ -29,13 +29,14 @@ MaceStatus GroupConv2dK3x3S1<float>::DoCompute(const GroupConvComputeParam &p,
                                                const float *filter_data,
                                                const float *input_data,
                                                float *output_data) {
-  p.thread_pool.Compute2D(
+  p.thread_pool.Compute3D(
       [=](index_t start0, index_t end0, index_t step0, index_t start1,
-          index_t end1, index_t step1) {
-        for (index_t g = 0; g < p.group_size; g++) {
-          for (index_t b = start0; b < end0; b += step0) {
-            for (index_t m = start1 + g * p.group_size;
-                 m < std::min(end1, (g + 1) * p.group_size); m += step1) {
+          index_t end1, index_t step1, index_t start2, index_t end2,
+          index_t step2) {
+        for (index_t b = start0; b < end0; b += step0) {
+          for (index_t g = start1; g < end1; g += step1) {
+            for (index_t m = start2 + g * p.group_size;
+                 m < std::min(end2, (g + 1) * p.group_size); m += step2) {
               if (m + 1 < (g + 1) * p.group_size && m + 1 < p.out_channels) {
                 float *out_ptr0_base =
                     output_data + b * p.out_batch_size + m * p.out_image_size;
@@ -292,10 +293,10 @@ MaceStatus GroupConv2dK3x3S1<float>::DoCompute(const GroupConvComputeParam &p,
                 }      // mm
               }        // if
             }          // m
-          }            // b
-        }              // g
+          }            // g
+        }              // b
       },
-      0, p.batch, 1, 0, p.out_channels, 2);
+      0, p.batch, 1, 0, p.group_size, 1, 0, p.out_channels, 2);
 
   return MaceStatus::MACE_SUCCESS;
 }
@@ -305,13 +306,14 @@ MaceStatus GroupConv2dK3x3S2<float>::DoCompute(const GroupConvComputeParam &p,
                                                const float *filter_data,
                                                const float *input_data,
                                                float *output_data) {
-  p.thread_pool.Compute2D(
+  p.thread_pool.Compute3D(
       [=](index_t start0, index_t end0, index_t step0, index_t start1,
-          index_t end1, index_t step1) {
+          index_t end1, index_t step1, index_t start2, index_t end2,
+          index_t step2) {
         for (index_t b = start0; b < end0; b += step0) {
           for (index_t g = start1; g < end1; g += step1) {
-            for (index_t m = g * p.out_channels / p.group_size;
-                 m < (g + 1) * p.out_channels / p.group_size; ++m) {
+            for (index_t m = start2 + g * p.group_size;
+                 m < std::min(end2, (g + 1) * p.group_size); m += step2) {
               for (index_t c = g * p.in_channels / p.group_size;
                    c < (g + 1) * p.in_channels / p.group_size; ++c) {
                 const float *in_base =
@@ -389,7 +391,7 @@ MaceStatus GroupConv2dK3x3S2<float>::DoCompute(const GroupConvComputeParam &p,
           }          // g
         }            // b
       },
-      0, p.batch, 1, 0, p.group_size, 1);
+      0, p.batch, 1, 0, p.group_size, 1, 0, p.out_channels, 1);
 
   return MaceStatus::MACE_SUCCESS;
 }
