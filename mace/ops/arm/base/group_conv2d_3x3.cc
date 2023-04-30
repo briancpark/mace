@@ -28,22 +28,7 @@ void RegisterGroupConv2dK3x3Delegator(OpDelegatorRegistry *registry) {
       MACE_DELEGATOR_KEY_EX(GroupConv2d, RuntimeType::RT_CPU, float,
                             ImplType::NEON, K3x3S2));
 
-  //   MACE_REGISTER_BF16_DELEGATOR(
-  //       registry, GroupConv2dK3x3S1<BFloat16>, delegator::GroupConv2dParam,
-  //       MACE_DELEGATOR_KEY_EX(GroupConv2d, RuntimeType::RT_CPU, BFloat16,
-  //                             ImplType::NEON, K3x3S1));
-  //   MACE_REGISTER_BF16_DELEGATOR(
-  //       registry, GroupConv2dK3x3S2<BFloat16>, delegator::GroupConv2dParam,
-  //       MACE_DELEGATOR_KEY_EX(GroupConv2d, RuntimeType::RT_CPU, BFloat16,
-  //                             ImplType::NEON, K3x3S2));
-  //   MACE_REGISTER_FP16_DELEGATOR(
-  //       registry, GroupConv2dK3x3S1<float16_t>, delegator::GroupConv2dParam,
-  //       MACE_DELEGATOR_KEY_EX(GroupConv2d, RuntimeType::RT_CPU, float16_t,
-  //                             ImplType::NEON, K3x3S1));
-  //   MACE_REGISTER_FP16_DELEGATOR(
-  //       registry, GroupConv2dK3x3S2<float16_t>, delegator::GroupConv2dParam,
-  //       MACE_DELEGATOR_KEY_EX(GroupConv2d, RuntimeType::RT_CPU, float16_t,
-  //                             ImplType::NEON, K3x3S2));
+  // BFLoat16, float16_t are not implemented yet
 }
 
 }  // namespace arm
